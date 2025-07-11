@@ -1,0 +1,1019 @@
+/* Pool Controller Mobile CSS */
+:root {
+    --primary-color: #0066CC;
+    --secondary-color: #004499;
+    --success-color: #00AA00;
+    --warning-color: #FFAA00;
+    --danger-color: #FF0000;
+    --background-color: #F5F7FA;
+    --card-background: #FFFFFF;
+    --text-primary: #333333;
+    --text-secondary: #666666;
+    --border-color: #E0E6ED;
+    --shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    --border-radius: 12px;
+    --nav-height: 70px;
+    --header-height: 80px;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: var(--background-color);
+    color: var(--text-primary);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+}
+
+#app {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Header Styles */
+.header {
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    color: white;
+    padding: 10px 16px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    height: var(--header-height);
+    box-shadow: var(--shadow);
+}
+
+.status-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    margin-bottom: 8px;
+}
+
+.connection-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--success-color);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.network-status {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+}
+
+.network-icon {
+    font-size: 14px;
+}
+
+.network-text {
+    font-weight: 500;
+}
+
+.network-text.online {
+    color: var(--success-color);
+}
+
+.network-text.offline {
+    color: var(--danger-color);
+}
+
+.acid-level {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 600;
+}
+
+.app-title {
+    font-size: 18px;
+    font-weight: 600;
+    text-align: center;
+}
+
+/* Main Content */
+.main-content {
+    flex: 1;
+    padding: calc(var(--header-height) + 16px) 16px calc(var(--nav-height) + 16px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Screen Management */
+.screen {
+    display: none;
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+.screen.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.screen-header {
+    margin-bottom: 20px;
+}
+
+.screen-header h2 {
+    font-size: 24px;
+    color: var(--primary-color);
+    margin-bottom: 8px;
+}
+
+/* Cards Grid */
+.cards-grid {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: 1fr;
+}
+
+.card {
+    background: var(--card-background);
+    border-radius: var(--border-radius);
+    padding: 20px;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border-color);
+}
+
+.card h3 {
+    font-size: 16px;
+    color: var(--primary-color);
+    margin-bottom: 16px;
+    font-weight: 600;
+}
+
+/* Water Quality Card */
+.sensor-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.sensor-item {
+    text-align: center;
+}
+
+.sensor-label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+
+.sensor-value {
+    display: block;
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+.sensor-health {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: center;
+    padding: 8px;
+    background: rgba(0, 170, 0, 0.1);
+    border-radius: 8px;
+}
+
+.health-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+}
+
+.health-indicator.healthy {
+    background-color: var(--success-color);
+}
+
+.health-indicator.warning {
+    background-color: var(--warning-color);
+}
+
+.health-indicator.danger {
+    background-color: var(--danger-color);
+}
+
+/* Equipment Status Card */
+.equipment-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.equipment-item:last-child {
+    border-bottom: none;
+}
+
+.equipment-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.equipment-label {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.equipment-status {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+.equipment-current {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.status-indicator {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background-color: var(--success-color);
+}
+
+/* Chemical System Card */
+.acid-container {
+    margin-bottom: 16px;
+}
+
+.acid-info {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.acid-label {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.acid-amount {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+.acid-bar {
+    height: 8px;
+    background-color: var(--border-color);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.acid-fill {
+    height: 100%;
+    background-color: var(--success-color);
+    transition: width 0.3s ease;
+}
+
+.acid-stats {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.learning-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.learning-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+}
+
+.learning-item span:last-child {
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+/* Quick Actions Card */
+.action-buttons {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+}
+
+.action-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: var(--primary-color);
+    color: white;
+}
+
+.action-btn:active {
+    transform: scale(0.98);
+}
+
+.action-btn.emergency {
+    background: var(--danger-color);
+}
+
+.action-btn.dose {
+    background: var(--warning-color);
+}
+
+.btn-icon {
+    font-size: 18px;
+}
+
+/* Lighting Control */
+.current-mode {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 16px;
+    color: var(--text-secondary);
+}
+
+.current-mode span:nth-child(2) {
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+.runtime {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.lighting-grid h3 {
+    margin: 24px 0 16px;
+    color: var(--primary-color);
+}
+
+.color-buttons, .special-buttons {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.light-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 16px 8px;
+    border: 2px solid transparent;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: white;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.light-btn:active {
+    transform: scale(0.95);
+}
+
+.light-btn.active {
+    border-color: white;
+    box-shadow: 0 0 0 2px var(--primary-color);
+}
+
+/* Light Button Colors */
+.light-btn.blue { background: #0066FF; }
+.light-btn.pink { background: #FF66CC; }
+.light-btn.red { background: #FF0000; }
+.light-btn.yellow { background: #FFFF00; color: #000; text-shadow: none; }
+.light-btn.green { background: #00FF00; color: #000; text-shadow: none; }
+.light-btn.cyan { background: #00FFFF; color: #000; text-shadow: none; }
+.light-btn.white { background: #FFFFFF; color: #000; text-shadow: none; }
+.light-btn.off { background: #666666; }
+.light-btn.mode1 { background: #9933CC; }
+.light-btn.mode2 { background: #CC3399; }
+.light-btn.mode3 { background: #3399CC; }
+.light-btn.mode4 { background: #99CC33; }
+.light-btn.brightness { background: #FFAA00; color: #000; text-shadow: none; }
+
+.timing {
+    font-size: 10px;
+    opacity: 0.8;
+}
+
+.lighting-info {
+    background: rgba(0, 102, 204, 0.1);
+    padding: 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+/* Manual Control */
+.manual-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.control-section {
+    background: var(--card-background);
+    border-radius: var(--border-radius);
+    padding: 20px;
+    box-shadow: var(--shadow);
+}
+
+.control-section h3 {
+    color: var(--primary-color);
+    margin-bottom: 16px;
+}
+
+.dose-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.dose-input {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.dose-input label {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.dose-input input {
+    padding: 12px;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 16px;
+    background: white;
+}
+
+.dose-input input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.control-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 16px;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: var(--primary-color);
+    color: white;
+}
+
+.control-btn:active {
+    transform: scale(0.98);
+}
+
+.override-controls, .maintenance-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+/* Pump Calibration */
+.calibration-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.calibration-input {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.calibration-input label {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.calibration-input input {
+    padding: 12px;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 16px;
+    background: white;
+}
+
+.calibration-input input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.calibration-input input:disabled {
+    background: #f5f5f5;
+    color: #999;
+    cursor: not-allowed;
+}
+
+.calibration-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.calibration-status {
+    padding: 12px;
+    background: rgba(0, 102, 204, 0.1);
+    border-radius: 8px;
+    font-size: 14px;
+    color: var(--primary-color);
+    text-align: center;
+    border-left: 4px solid var(--primary-color);
+}
+
+.calibration-status.warning {
+    background: rgba(255, 170, 0, 0.1);
+    color: var(--warning-color);
+    border-left-color: var(--warning-color);
+}
+
+.calibration-status.success {
+    background: rgba(0, 170, 0, 0.1);
+    color: var(--success-color);
+    border-left-color: var(--success-color);
+}
+
+.start-cal-btn {
+    background: var(--warning-color);
+    color: white;
+}
+
+.complete-cal-btn {
+    background: var(--success-color);
+    color: white;
+}
+
+.complete-cal-btn:disabled {
+    background: #ccc;
+    color: #666;
+    cursor: not-allowed;
+}
+
+.clear-cal-btn {
+    background: var(--danger-color);
+    color: white;
+}
+
+.pump-status-btn {
+    background: var(--primary-color);
+    color: white;
+}
+
+.safety-notice {
+    background: rgba(255, 170, 0, 0.1);
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--warning-color);
+    text-align: center;
+}
+
+/* Settings */
+.settings-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.setting-section {
+    background: var(--card-background);
+    border-radius: var(--border-radius);
+    padding: 20px;
+    box-shadow: var(--shadow);
+}
+
+.setting-section h3 {
+    color: var(--primary-color);
+    margin-bottom: 16px;
+}
+
+.setting-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.setting-item:last-child {
+    border-bottom: none;
+}
+
+.setting-item label {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.setting-item input[type="number"] {
+    padding: 8px 12px;
+    border: 2px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 14px;
+    width: 100px;
+    text-align: right;
+}
+
+.setting-item input[type="number"]:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+/* Toggle Switch */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: 0.3s;
+    border-radius: 24px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: var(--primary-color);
+}
+
+input:checked + .slider:before {
+    transform: translateX(26px);
+}
+
+.learning-performance {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.performance-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+}
+
+.performance-item span:last-child {
+    font-weight: 600;
+    color: var(--success-color);
+}
+
+.settings-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.settings-btn {
+    padding: 16px;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.settings-btn.save {
+    background: var(--success-color);
+    color: white;
+}
+
+.settings-btn.reset {
+    background: var(--danger-color);
+    color: white;
+}
+
+.settings-btn:active {
+    transform: scale(0.98);
+}
+
+/* Alarms */
+.alarms-content {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.active-alarms, .system-health {
+    background: var(--card-background);
+    border-radius: var(--border-radius);
+    padding: 20px;
+    box-shadow: var(--shadow);
+}
+
+.active-alarms h3, .system-health h3 {
+    color: var(--primary-color);
+    margin-bottom: 16px;
+}
+
+.alarm-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.no-alarms {
+    text-align: center;
+    color: var(--success-color);
+    font-size: 16px;
+    padding: 20px;
+}
+
+.alarm-item {
+    padding: 12px;
+    background: rgba(255, 0, 0, 0.1);
+    border-left: 4px solid var(--danger-color);
+    border-radius: 4px;
+}
+
+.health-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.health-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    background: rgba(0, 170, 0, 0.1);
+    border-radius: 8px;
+}
+
+.health-label {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.health-status {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+.health-status.healthy {
+    background: var(--success-color);
+    color: white;
+}
+
+.health-status.warning {
+    background: var(--warning-color);
+    color: white;
+}
+
+.health-status.danger {
+    background: var(--danger-color);
+    color: white;
+}
+
+/* Bottom Navigation */
+.bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: white;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    height: var(--nav-height);
+    z-index: 100;
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.nav-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: var(--text-secondary);
+}
+
+.nav-btn.active {
+    color: var(--primary-color);
+    background: rgba(0, 102, 204, 0.1);
+}
+
+.nav-btn:active {
+    transform: scale(0.95);
+}
+
+.nav-icon {
+    font-size: 20px;
+}
+
+.nav-label {
+    font-size: 10px;
+    font-weight: 500;
+}
+
+/* Loading Overlay */
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    color: white;
+}
+
+.loading-overlay.hidden {
+    display: none;
+}
+
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-top: 4px solid white;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 16px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading-text {
+    font-size: 16px;
+    font-weight: 500;
+}
+
+/* Toast Notifications */
+.toast {
+    position: fixed;
+    top: calc(var(--header-height) + 16px);
+    left: 16px;
+    right: 16px;
+    background: var(--primary-color);
+    color: white;
+    padding: 16px;
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    transform: translateY(-100px);
+    opacity: 0;
+    transition: all 0.3s ease;
+    z-index: 200;
+}
+
+.toast.show {
+    transform: translateY(0);
+    opacity: 1;
+}
+
+.toast-message {
+    font-size: 14px;
+    font-weight: 500;
+}
+
+/* Responsive Design */
+@media (min-width: 768px) {
+    .cards-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .color-buttons, .special-buttons {
+        grid-template-columns: repeat(6, 1fr);
+    }
+    
+    .override-controls, .maintenance-controls {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (min-width: 1024px) {
+    .main-content {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    
+    .cards-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+/* Touch Improvements */
+@media (hover: none) and (pointer: coarse) {
+    .action-btn, .control-btn, .light-btn, .nav-btn {
+        min-height: 44px;
+    }
+    
+    .light-btn {
+        min-height: 60px;
+    }
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --background-color: #1a1a1a;
+        --card-background: #2d2d2d;
+        --text-primary: #ffffff;
+        --text-secondary: #cccccc;
+        --border-color: #404040;
+    }
+    
+    .bottom-nav {
+        background: var(--card-background);
+        border-top-color: var(--border-color);
+    }
+}

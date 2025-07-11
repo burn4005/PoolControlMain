@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0066CC">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Pool Controller">
+    <title>Pool Controller</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" sizes="192x192" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==">
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="status-bar">
+                <div class="connection-status" id="connectionStatus">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Connected</span>
+                </div>
+                <div class="network-status" id="networkStatus">
+                    <span class="network-icon">📶</span>
+                    <span class="network-text">offline</span>
+                </div>
+                <div class="time" id="currentTime">--:--</div>
+                <div class="acid-level" id="acidLevel">
+                    <span class="acid-icon">🧪</span>
+                    <span class="acid-percentage">84%</span>
+                </div>
+            </div>
+            <h1 class="app-title">Pool Controller</h1>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Dashboard Screen -->
+            <div class="screen active" id="dashboardScreen">
+                <div class="cards-grid">
+                    <!-- Water Quality Card -->
+                    <div class="card water-quality">
+                        <h3>Water Quality</h3>
+                        <div class="sensor-grid">
+                            <div class="sensor-item">
+                                <span class="sensor-label">Temperature</span>
+                                <span class="sensor-value" id="temperature">25.4°C</span>
+                            </div>
+                            <div class="sensor-item">
+                                <span class="sensor-label">pH Level</span>
+                                <span class="sensor-value" id="ph">7.2</span>
+                            </div>
+                            <div class="sensor-item">
+                                <span class="sensor-label">ORP</span>
+                                <span class="sensor-value" id="orp">685mV</span>
+                            </div>
+                        </div>
+                        <div class="sensor-health" id="sensorHealth">
+                            <span class="health-indicator healthy"></span>
+                            <span>Sensors Healthy</span>
+                        </div>
+                    </div>
+
+                    <!-- Equipment Status Card -->
+                    <div class="card equipment-status">
+                        <h3>Equipment Status</h3>
+                        <div class="equipment-item">
+                            <div class="equipment-info">
+                                <span class="equipment-label">Pool Pump</span>
+                                <span class="equipment-status" id="pumpStatus">MEDIUM SPEED</span>
+                                <span class="equipment-current" id="pumpCurrent">4.8A</span>
+                            </div>
+                            <div class="status-indicator" id="pumpIndicator"></div>
+                        </div>
+                        <div class="equipment-item">
+                            <div class="equipment-info">
+                                <span class="equipment-label">Chlorinator</span>
+                                <span class="equipment-status" id="chlorinatorStatus">25% DUTY</span>
+                                <span class="equipment-current" id="chlorinatorCurrent">0.65A</span>
+                            </div>
+                            <div class="status-indicator" id="chlorinatorIndicator"></div>
+                        </div>
+                        <div class="equipment-item">
+                            <div class="equipment-info">
+                                <span class="equipment-label">Pool Lights</span>
+                                <span class="equipment-status" id="lightStatus">WHITE</span>
+                            </div>
+                            <div class="status-indicator" id="lightIndicator"></div>
+                        </div>
+                    </div>
+
+                    <!-- Chemical System Card -->
+                    <div class="card chemical-system">
+                        <h3>Chemical System</h3>
+                        <div class="acid-container">
+                            <div class="acid-info">
+                                <span class="acid-label">Acid Level</span>
+                                <span class="acid-amount" id="acidAmount">4.2L / 5.0L</span>
+                            </div>
+                            <div class="acid-bar">
+                                <div class="acid-fill" id="acidFill" style="width: 84%"></div>
+                            </div>
+                            <div class="acid-stats">
+                                <span id="dailyConsumption">Daily: 120ml</span>
+                                <span id="daysRemaining">35 days left</span>
+                            </div>
+                        </div>
+                        <div class="learning-stats">
+                            <div class="learning-item">
+                                <span>pH Learning:</span>
+                                <span id="phLearning">15.2%</span>
+                            </div>
+                            <div class="learning-item">
+                                <span>ORP Learning:</span>
+                                <span id="orpLearning">12.8%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Actions Card -->
+                    <div class="card quick-actions">
+                        <h3>Quick Actions</h3>
+                        <div class="action-buttons">
+                            <button class="action-btn emergency" id="emergencyStop">
+                                <span class="btn-icon">🛑</span>
+                                <span>Emergency Stop</span>
+                            </button>
+                            <button class="action-btn dose" id="quickDose">
+                                <span class="btn-icon">💧</span>
+                                <span>Manual Dose</span>
+                            </button>
+                            <button class="action-btn light-toggle" id="lightToggle">
+                                <span class="btn-icon">💡</span>
+                                <span>Toggle Lights</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Lighting Control Screen -->
+            <div class="screen" id="lightingScreen">
+                <div class="screen-header">
+                    <h2>Pool Lighting Control</h2>
+                    <div class="current-mode">
+                        <span>Current Mode: </span>
+                        <span id="currentLightMode">WHITE</span>
+                        <span class="runtime" id="lightRuntime">1h 23m</span>
+                    </div>
+                </div>
+
+                <div class="lighting-grid">
+                    <h3>Color Selection</h3>
+                    <div class="color-buttons">
+                        <button class="light-btn blue" data-mode="1">
+                            <span class="color-name">Blue</span>
+                            <span class="timing">250ms</span>
+                        </button>
+                        <button class="light-btn pink" data-mode="2">
+                            <span class="color-name">Pink</span>
+                            <span class="timing">300ms</span>
+                        </button>
+                        <button class="light-btn red" data-mode="3">
+                            <span class="color-name">Red</span>
+                            <span class="timing">350ms</span>
+                        </button>
+                        <button class="light-btn yellow" data-mode="4">
+                            <span class="color-name">Yellow</span>
+                            <span class="timing">400ms</span>
+                        </button>
+                        <button class="light-btn green" data-mode="5">
+                            <span class="color-name">Green</span>
+                            <span class="timing">450ms</span>
+                        </button>
+                        <button class="light-btn cyan" data-mode="6">
+                            <span class="color-name">Cyan</span>
+                            <span class="timing">500ms</span>
+                        </button>
+                        <button class="light-btn white" data-mode="7">
+                            <span class="color-name">White</span>
+                            <span class="timing">550ms</span>
+                        </button>
+                        <button class="light-btn off" data-mode="0">
+                            <span class="color-name">OFF</span>
+                            <span class="timing">--</span>
+                        </button>
+                    </div>
+
+                    <h3>Special Modes</h3>
+                    <div class="special-buttons">
+                        <button class="light-btn mode1" data-mode="8">
+                            <span class="color-name">Mode 1</span>
+                            <span class="timing">600ms</span>
+                        </button>
+                        <button class="light-btn mode2" data-mode="9">
+                            <span class="color-name">Mode 2</span>
+                            <span class="timing">650ms</span>
+                        </button>
+                        <button class="light-btn mode3" data-mode="10">
+                            <span class="color-name">Mode 3</span>
+                            <span class="timing">700ms</span>
+                        </button>
+                        <button class="light-btn mode4" data-mode="11">
+                            <span class="color-name">Mode 4</span>
+                            <span class="timing">750ms</span>
+                        </button>
+                        <button class="light-btn brightness" data-mode="12">
+                            <span class="color-name">Brightness</span>
+                            <span class="timing">900ms</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="lighting-info">
+                    <p>Light modes are selected by turning lights OFF for the specified duration. The system will automatically turn lights back ON in the selected mode.</p>
+                </div>
+            </div>
+
+            <!-- Manual Control Screen -->
+            <div class="screen" id="manualScreen">
+                <div class="screen-header">
+                    <h2>Manual Control</h2>
+                </div>
+
+                <div class="manual-controls">
+                    <div class="control-section">
+                        <h3>Manual Acid Dosing</h3>
+                        <div class="dose-controls">
+                            <div class="dose-input">
+                                <label for="doseAmount">Volume (ml):</label>
+                                <input type="number" id="doseAmount" min="1" max="100" value="10" step="1">
+                            </div>
+                            <button class="control-btn dose-btn" id="manualDoseBtn">
+                                <span class="btn-icon">💧</span>
+                                <span>Dose Acid</span>
+                            </button>
+                        </div>
+                        <div class="safety-notice">
+                            ⚠️ Only dose when pump is running and circulating water
+                        </div>
+                    </div>
+
+                    <div class="control-section">
+                        <h3>Equipment Override</h3>
+                        <div class="override-controls">
+                            <button class="control-btn pump-btn" id="pumpOverride">
+                                <span class="btn-icon">⚙️</span>
+                                <span>Pump Override</span>
+                            </button>
+                            <button class="control-btn chlorinator-btn" id="chlorinatorOverride">
+                                <span class="btn-icon">🌊</span>
+                                <span>Chlorinator Override</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="control-section">
+                        <h3>Pump Calibration</h3>
+                        <div class="calibration-controls">
+                            <div class="calibration-input">
+                                <label for="calibrationVolume">Target Volume (ml):</label>
+                                <input type="number" id="calibrationVolume" min="1" max="100" value="10" step="0.1">
+                            </div>
+                            <div class="calibration-buttons">
+                                <button class="control-btn start-cal-btn" id="startCalibrationBtn">
+                                    <span class="btn-icon">🎯</span>
+                                    <span>Start Calibration</span>
+                                </button>
+                                <button class="control-btn complete-cal-btn" id="completeCalibrationBtn" disabled>
+                                    <span class="btn-icon">✅</span>
+                                    <span>Complete Calibration</span>
+                                </button>
+                            </div>
+                            <div class="calibration-input">
+                                <label for="actualVolume">Actual Volume (ml):</label>
+                                <input type="number" id="actualVolume" min="0.1" max="100" step="0.1" disabled>
+                            </div>
+                            <div class="calibration-status" id="calibrationStatus">
+                                Ready to calibrate pump volume
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="control-section">
+                        <h3>Sensor Calibration</h3>
+                        <div class="sensor-calibration">
+                            <div class="sensor-readings">
+                                <div class="reading-item">
+                                    <span>Current pH:</span>
+                                    <span id="currentPh">7.20</span>
+                                </div>
+                                <div class="reading-item">
+                                    <span>Current ORP:</span>
+                                    <span id="currentOrp">685mV</span>
+                                </div>
+                            </div>
+                            
+                            <div class="ph-calibration">
+                                <h4>pH Calibration</h4>
+                                <div class="calibration-buttons">
+                                    <button class="control-btn ph-4-btn" id="phCal4Btn">pH 4.0</button>
+                                    <button class="control-btn ph-7-btn" id="phCal7Btn">pH 7.0</button>
+                                    <button class="control-btn ph-10-btn" id="phCal10Btn">pH 10.0</button>
+                                </div>
+                                <div class="custom-calibration">
+                                    <input type="number" id="phBufferValue" min="1" max="14" step="0.1" value="7.0" placeholder="Custom pH">
+                                    <button class="control-btn ph-custom-btn" id="phCalCustomBtn">Calibrate pH</button>
+                                    <button class="control-btn clear-ph-btn" id="clearPhCalBtn">Clear pH Cal</button>
+                                </div>
+                            </div>
+                            
+                            <div class="orp-calibration">
+                                <h4>ORP Calibration</h4>
+                                <div class="calibration-buttons">
+                                    <button class="control-btn orp-225-btn" id="orpCal225Btn">225mV</button>
+                                    <button class="control-btn orp-470-btn" id="orpCal470Btn">470mV</button>
+                                </div>
+                                <div class="custom-calibration">
+                                    <input type="number" id="orpStandardValue" min="-2000" max="2000" step="1" value="470" placeholder="Custom mV">
+                                    <button class="control-btn orp-custom-btn" id="orpCalCustomBtn">Calibrate ORP</button>
+                                    <button class="control-btn clear-orp-btn" id="clearOrpCalBtn">Clear ORP Cal</button>
+                                </div>
+                            </div>
+                            
+                            <div class="calibration-status" id="sensorCalibrationStatus">
+                                Ready for sensor calibration
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="control-section">
+                        <h3>System Maintenance</h3>
+                        <div class="maintenance-controls">
+                            <button class="control-btn refill-btn" id="refillBtn">
+                                <span class="btn-icon">🧪</span>
+                                <span>Refill Acid Bottle</span>
+                            </button>
+                            <button class="control-btn pump-status-btn" id="pumpStatusBtn">
+                                <span class="btn-icon">📊</span>
+                                <span>Pump Status</span>
+                            </button>
+                            <button class="control-btn clear-cal-btn" id="clearCalibrationBtn">
+                                <span class="btn-icon">🔄</span>
+                                <span>Reset Pump Cal</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Screen -->
+            <div class="screen" id="settingsScreen">
+                <div class="screen-header">
+                    <h2>Settings</h2>
+                </div>
+
+                <div class="settings-sections">
+                    <div class="setting-section">
+                        <h3>Target Values</h3>
+                        <div class="setting-item">
+                            <label for="phTarget">pH Target:</label>
+                            <input type="number" id="phTarget" min="6.0" max="8.5" step="0.1" value="7.6">
+                        </div>
+                        <div class="setting-item">
+                            <label for="orpTarget">ORP Target (mV):</label>
+                            <input type="number" id="orpTarget" min="600" max="800" step="10" value="700">
+                        </div>
+                        <div class="setting-item">
+                            <label for="dutyCycle">Chlorinator Duty (%):</label>
+                            <input type="number" id="dutyCycle" min="0" max="100" step="1" value="25">
+                        </div>
+                    </div>
+
+                    <div class="setting-section">
+                        <h3>Pool Configuration</h3>
+                        <div class="setting-item">
+                            <label for="poolVolume">Pool Volume (L):</label>
+                            <input type="number" id="poolVolume" min="10000" max="100000" step="1000" value="30000">
+                        </div>
+                        <div class="setting-item">
+                            <label for="acidConcentration">HCl Concentration (%):</label>
+                            <input type="number" id="acidConcentration" min="10" max="50" step="0.5" value="32.5">
+                        </div>
+                    </div>
+
+                    <div class="setting-section">
+                        <h3>Learning System</h3>
+                        <div class="setting-item">
+                            <label class="switch">
+                                <input type="checkbox" id="learningEnabled" checked>
+                                <span class="slider"></span>
+                                Enable Learning System
+                            </label>
+                        </div>
+                        <div class="learning-performance">
+                            <div class="performance-item">
+                                <span>pH Effectiveness:</span>
+                                <span id="phEffectiveness">95%</span>
+                            </div>
+                            <div class="performance-item">
+                                <span>ORP Effectiveness:</span>
+                                <span id="orpEffectiveness">88%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-actions">
+                        <button class="settings-btn save" id="saveSettings">Save Settings</button>
+                        <button class="settings-btn reset" id="resetSettings">Reset to Defaults</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alarms Screen -->
+            <div class="screen" id="alarmsScreen">
+                <div class="screen-header">
+                    <h2>Alarms & Status</h2>
+                </div>
+
+                <div class="alarms-content">
+                    <div class="active-alarms" id="activeAlarms">
+                        <h3>Active Alarms</h3>
+                        <div class="alarm-list" id="alarmList">
+                            <div class="no-alarms">✅ No active alarms</div>
+                        </div>
+                    </div>
+
+                    <div class="system-health">
+                        <h3>System Health</h3>
+                        <div class="health-grid">
+                            <div class="health-item">
+                                <span class="health-label">Sensors</span>
+                                <span class="health-status healthy" id="sensorsHealth">Healthy</span>
+                            </div>
+                            <div class="health-item">
+                                <span class="health-label">Pump</span>
+                                <span class="health-status healthy" id="pumpHealth">Healthy</span>
+                            </div>
+                            <div class="health-item">
+                                <span class="health-label">Chlorinator</span>
+                                <span class="health-status healthy" id="chlorinatorHealth">Healthy</span>
+                            </div>
+                            <div class="health-item">
+                                <span class="health-label">Chemical System</span>
+                                <span class="health-status healthy" id="chemicalHealth">Healthy</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Bottom Navigation -->
+        <nav class="bottom-nav">
+            <button class="nav-btn active" data-screen="dashboard">
+                <span class="nav-icon">📊</span>
+                <span class="nav-label">Dashboard</span>
+            </button>
+            <button class="nav-btn" data-screen="lighting">
+                <span class="nav-icon">💡</span>
+                <span class="nav-label">Lighting</span>
+            </button>
+            <button class="nav-btn" data-screen="manual">
+                <span class="nav-icon">🎛️</span>
+                <span class="nav-label">Manual</span>
+            </button>
+            <button class="nav-btn" data-screen="settings">
+                <span class="nav-icon">⚙️</span>
+                <span class="nav-label">Settings</span>
+            </button>
+            <button class="nav-btn" data-screen="alarms">
+                <span class="nav-icon">🚨</span>
+                <span class="nav-label">Alarms</span>
+            </button>
+        </nav>
+
+        <!-- Loading Overlay -->
+        <div class="loading-overlay" id="loadingOverlay">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Connecting...</div>
+        </div>
+
+        <!-- Toast Notifications -->
+        <div class="toast" id="toast">
+            <span class="toast-message" id="toastMessage"></span>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

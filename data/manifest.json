@@ -1,0 +1,84 @@
+{
+  "name": "Pool Controller",
+  "short_name": "Pool Control",
+  "description": "Professional pool automation system with real-time monitoring and control",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0066CC",
+  "theme_color": "#0066CC",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "en",
+  "categories": ["utilities", "productivity"],
+  "icons": [
+    {
+      "src": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTkyIiBoZWlnaHQ9IjE5MiIgdmlld0JveD0iMCAwIDE5MiAxOTIiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxOTIiIGhlaWdodD0iMTkyIiByeD0iMjQiIGZpbGw9IiMwMDY2Q0MiLz4KPHBhdGggZD0iTTQ4IDY0SDE0NFY5NkM0OCA5NiA0OCA4MCA0OCA2NFoiIGZpbGw9IiM0OEJGREEiLz4KPHBhdGggZD0iTTQ4IDk2SDE0NFYxMjhINDhWOTZaIiBmaWxsPSIjMDBBQUZGIi8+CjxjaXJjbGUgY3g9IjE1MiIgY3k9IjQwIiByPSIxNiIgZmlsbD0iI0ZGRkZGRiIvPgo8Y2lyY2xlIGN4PSI0MCIgY3k9IjE1MiIgcj0iOCIgZmlsbD0iI0ZGQUEwMCIvPgo8L3N2Zz4K",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgdmlld0JveD0iMCAwIDUxMiA1MTIiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI1MTIiIGhlaWdodD0iNTEyIiByeD0iNjQiIGZpbGw9IiMwMDY2Q0MiLz4KPHBhdGggZD0iTTEyOCAxNzBIMzg0VjI1NkMxMjggMjU2IDEyOCAyMTMgMTI4IDE3MFoiIGZpbGw9IiM0OEJGREEiLz4KPHBhdGggZD0iTTEyOCAyNTZIMzg0VjM0MkgxMjhWMjU2WiIgZmlsbD0iIzAwQUFGRiIvPgo8Y2lyY2xlIGN4PSI0MDgiIGN5PSIxMDQiIHI9IjQwIiBmaWxsPSIjRkZGRkZGIi8+CjxjaXJjbGUgY3g9IjEwNCIgY3k9IjQwOCIgcj0iMjQiIGZpbGw9IiNGRkFBMDAiLz4KPC9zdmc+Cg==",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzc1IiBoZWlnaHQ9IjY2NyIgdmlld0JveD0iMCAwIDM3NSA2NjciIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIzNzUiIGhlaWdodD0iNjY3IiBmaWxsPSIjRjVGN0ZBIi8+CjxyZWN0IHk9IjAiIHdpZHRoPSIzNzUiIGhlaWdodD0iODAiIGZpbGw9InVybCgjZ3JhZGllbnQwX2xpbmVhcl8xXzEpIi8+CjxyZWN0IHg9IjE2IiB5PSI5NiIgd2lkdGg9IjM0MyIgaGVpZ2h0PSIxNjAiIHJ4PSIxMiIgZmlsbD0iI0ZGRkZGRiIvPgo8cmVjdCB4PSIxNiIgeT0iMjcyIiB3aWR0aD0iMzQzIiBoZWlnaHQ9IjE0MCIgcng9IjEyIiBmaWxsPSIjRkZGRkZGIi8+CjxyZWN0IHg9IjE2IiB5PSI0MjgiIHdpZHRoPSIzNDMiIGhlaWdodD0iMTIwIiByeD0iMTIiIGZpbGw9IiNGRkZGRkYiLz4KPHJlY3QgeT0iNTk3IiB3aWR0aD0iMzc1IiBoZWlnaHQ9IjcwIiBmaWxsPSIjRkZGRkZGIi8+CjxkZWZzPgo8bGluZWFyR3JhZGllbnQgaWQ9ImdyYWRpZW50MF9saW5lYXJfMV8xIiB4MT0iMCIgeTE9IjAiIHgyPSIzNzUiIHkyPSI4MCI+CjxzdG9wIHN0b3AtY29sb3I9IiMwMDY2Q0MiLz4KPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMDA0NDk5Ii8+CjwvbGluZWFyR3JhZGllbnQ+CjwvZGVmcz4KPC9zdmc+Cg==",
+      "sizes": "375x667",
+      "type": "image/svg+xml",
+      "form_factor": "narrow",
+      "label": "Pool Controller Dashboard"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "description": "View pool status and water quality",
+      "url": "/?screen=dashboard",
+      "icons": [
+        {
+          "src": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iOTYiIGhlaWdodD0iOTYiIHZpZXdCb3g9IjAgMCA5NiA5NiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9Ijk2IiBoZWlnaHQ9Ijk2IiByeD0iMTIiIGZpbGw9IiMwMDY2Q0MiLz4KPHJlY3QgeD0iMTYiIHk9IjE2IiB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHJ4PSI4IiBmaWxsPSIjRkZGRkZGIi8+Cjwvc3ZnPgo=",
+          "sizes": "96x96",
+          "type": "image/svg+xml"
+        }
+      ]
+    },
+    {
+      "name": "Lighting",
+      "short_name": "Lights",
+      "description": "Control pool lighting modes",
+      "url": "/?screen=lighting",
+      "icons": [
+        {
+          "src": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iOTYiIGhlaWdodD0iOTYiIHZpZXdCb3g9IjAgMCA5NiA5NiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9Ijk2IiBoZWlnaHQ9Ijk2IiByeD0iMTIiIGZpbGw9IiNGRkFBMDAiLz4KPGNpcmNsZSBjeD0iNDgiIGN5PSI0OCIgcj0iMjQiIGZpbGw9IiNGRkZGRkYiLz4KPC9zdmc+Cg==",
+          "sizes": "96x96",
+          "type": "image/svg+xml"
+        }
+      ]
+    },
+    {
+      "name": "Manual Control",
+      "short_name": "Manual",
+      "description": "Manual equipment control and dosing",
+      "url": "/?screen=manual",
+      "icons": [
+        {
+          "src": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iOTYiIGhlaWdodD0iOTYiIHZpZXdCb3g9IjAgMCA5NiA5NiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9Ijk2IiBoZWlnaHQ9Ijk2IiByeD0iMTIiIGZpbGw9IiMwMEFBMDAiLz4KPHJlY3QgeD0iMzIiIHk9IjE2IiB3aWR0aD0iMzIiIGhlaWdodD0iNjQiIHJ4PSI0IiBmaWxsPSIjRkZGRkZGIi8+Cjwvc3ZnPgo=",
+          "sizes": "96x96",
+          "type": "image/svg+xml"
+        }
+      ]
+    }
+  ],
+  "prefer_related_applications": false,
+  "edge_side_panel": {
+    "preferred_width": 400
+  },
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  }
+}

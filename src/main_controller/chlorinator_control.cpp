@@ -6,19 +6,8 @@ static uint64_t chlorinator_alarm_timer = 0;
 
 void chlorinator_control_init(void)
 {
-    ESP_LOGI(TAG, "Initializing Chlorinator Control...");
-    
-    // Configure chlorinator relay pin
-    gpio_config_t io_conf = {};
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    io_conf.mode = GPIO_MODE_OUTPUT;
-    io_conf.pin_bit_mask = (1ULL << CHLORINATOR_RELAY_PIN);
-    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
-    gpio_config(&io_conf);
-    
-    // Initialize chlorinator relay to OFF
-    gpio_set_level(CHLORINATOR_RELAY_PIN, 0);
+    ESP_LOGI(TAG, "Initializing Chlorinator Control (Shelly)...");
+
     g_state.chlorinator_relay_on = false;
     g_state.duty_cycle_active = false;
     g_state.duty_cycle_start_time = get_timestamp_ms();
@@ -26,7 +15,7 @@ void chlorinator_control_init(void)
     // Calculate duty cycle timing
     g_state.duty_on_time_ms = (g_config.duty_cycle_period_ms * g_config.chlorinator_duty_cycle) / 100.0f;
     
-    ESP_LOGI(TAG, "Chlorinator Control Initialized - Duty: %.1f%%, Period: %lums", 
+    ESP_LOGI(TAG, "Chlorinator Control Initialized (Shelly mode) - Duty: %.1f%%, Period: %lums",
              g_config.chlorinator_duty_cycle, g_config.duty_cycle_period_ms);
 }
 
@@ -147,7 +136,7 @@ const char* get_interlock_failure_reason(void)
 
 void set_chlorinator_relay(bool state)
 {
-    gpio_set_level(CHLORINATOR_RELAY_PIN, state ? 1 : 0);
+    shelly_queue_switch(SHELLY_CH_CHLORINATOR, state);
     g_state.chlorinator_relay_on = state;
     
     if (state) {

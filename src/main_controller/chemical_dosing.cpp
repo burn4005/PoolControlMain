@@ -15,148 +15,171 @@ void chemical_dosing_init(void)
 
 void perform_base_acid_addition(void)
 {
+    // Safety interlock: require healthy pump for water circulation
+    if (!g_state.pump_healthy) {
+        return;
+    }
+
     // Only perform base acid addition if enough time has passed
     uint64_t current_time = get_timestamp_ms();
-    
+
     if (g_state.last_acid_addition_time == 0) {
         g_state.last_acid_addition_time = current_time;
         return;
     }
-    
+
     uint64_t time_since_last_addition = current_time - g_state.last_acid_addition_time;
-    
+
     if (time_since_last_addition < g_config.acid_addition_interval_ms) {
         return; // Not time yet
     }
-    
+
     // Calculate acid amount based on chlorinator runtime
-    float chlorinator_runtime_hours_since_last = 
-        (float)(time_since_last_addition) / (1000.0f * 3600.0f); // Convert ms to hours
-    
+    float chlorinator_runtime_hours_since_last =
+        (float)(time_since_last_addition) / (1000.0f * 3600.0f);
+
     // Only add acid if chlorinator has been running
     if (g_state.chlorinator_runtime_hours > 0) {
         float acid_amount = g_config.base_acid_rate * chlorinator_runtime_hours_since_last;
-        
+
         // Apply learning adjustment
         float learning_adjustment = (g_config.base_acid_learning_gain / 100.0f);
         acid_amount *= (1.0f + learning_adjustment);
-        
+
         // Safety limits
-        if (acid_amount > 0.5f && acid_amount < 100.0f) { // Between 0.5ml and 100ml
-            
-            // Check if we have enough acid
-            if (g_state.acid_remaining_ml >= acid_amount) {
-                
-                esp_err_t result = atlas_dose_acid(acid_amount);
-                
-                if (result == ESP_OK) {
-                    g_state.acid_remaining_ml -= acid_amount;
-                    g_state.last_acid_addition_time = current_time;
-                    
-                    // Save updated acid level to NVS
-                    system_config_save_runtime_state();
-                    
-                    ESP_LOGI(TAG, "Base acid addition: %.1fml (Runtime: %.1fh, Rate: %.1fml/h)", 
-                             acid_amount, chlorinator_runtime_hours_since_last, g_config.base_acid_rate);
-                    
-                    char log_msg[128];
-                    snprintf(log_msg, sizeof(log_msg), 
-                             "Base acid: %.1fml added (%.1fml remaining)", 
-                             acid_amount, g_state.acid_remaining_ml);
-                    log_event(log_msg);
-                } else {
-                    ESP_LOGE(TAG, "Failed to dose acid: %s", esp_err_to_name(result));
-                }
+        if (acid_amount < MIN_BASE_ACID_DOSE_ML || acid_amount > MAX_BASE_ACID_DOSE_ML) {
+            return;
+        }
+
+        // Check daily limit
+        if (g_state.daily_acid_dosed_ml + acid_amount > MAX_DAILY_ACID_ML) {
+            ESP_LOGW(TAG, "Daily acid limit reached: %.1fml dosed today, %.1fml requested",
+                     g_state.daily_acid_dosed_ml, acid_amount);
+            raise_alarm("ACID_DAILY_LIMIT", "Daily acid dosing limit reached");
+            return;
+        }
+
+        // Check if we have enough acid
+        if (g_state.acid_remaining_ml >= acid_amount) {
+
+            esp_err_t result = atlas_dose_acid(acid_amount);
+
+            if (result == ESP_OK) {
+                g_state.acid_remaining_ml -= acid_amount;
+                g_state.daily_acid_dosed_ml += acid_amount;
+                g_state.last_acid_addition_time = current_time;
+
+                system_config_save_runtime_state();
+
+                ESP_LOGI(TAG, "Base acid addition: %.1fml (Runtime: %.1fh, Rate: %.1fml/h)",
+                         acid_amount, chlorinator_runtime_hours_since_last, g_config.base_acid_rate);
+
+                char log_msg[128];
+                snprintf(log_msg, sizeof(log_msg),
+                         "Base acid: %.1fml added (%.1fml remaining, %.1fml today)",
+                         acid_amount, g_state.acid_remaining_ml, g_state.daily_acid_dosed_ml);
+                log_event(log_msg);
             } else {
-                ESP_LOGW(TAG, "Insufficient acid for base addition: %.1fml needed, %.1fml available", 
-                         acid_amount, g_state.acid_remaining_ml);
+                ESP_LOGE(TAG, "Failed to dose acid: %s", esp_err_to_name(result));
             }
+        } else {
+            ESP_LOGW(TAG, "Insufficient acid for base addition: %.1fml needed, %.1fml available",
+                     acid_amount, g_state.acid_remaining_ml);
         }
     }
 }
 
 void perform_ph_correction(void)
 {
-    // Only perform pH correction if sensors are healthy and pH is out of range
-    if (!g_state.sensors_healthy) {
+    // Safety interlocks
+    if (!g_state.sensors_healthy || !g_state.pump_healthy) {
         return;
     }
-    
+
     float ph_error = g_state.ph - g_config.ph_target;
-    
+
     // Only correct if pH is significantly high (> 0.1 above target)
     if (ph_error <= 0.1f) {
         return;
     }
-    
+
     uint64_t current_time = get_timestamp_ms();
-    
+
     // Wait at least 10 minutes after pump start before first correction
-    if ((current_time - g_state.pump_start_time) < 600000) { // 10 minutes
+    if ((current_time - g_state.pump_start_time) < PH_CORRECTION_PUMP_DELAY_MS) {
         return;
     }
-    
+
     // Wait at least 30 minutes between corrections
-    if (g_state.last_ph_correction_time > 0 && 
-        (current_time - g_state.last_ph_correction_time) < 1800000) { // 30 minutes
+    if (g_state.last_ph_correction_time > 0 &&
+        (current_time - g_state.last_ph_correction_time) < PH_CORRECTION_INTERVAL_MS) {
         return;
     }
-    
+
     // Calculate correction amount using learning system
     float base_correction = g_config.ph_correction_base_amount;
     float learning_factor = g_state.last_ph_correction_perc / 100.0f;
     float correction_amount = base_correction * learning_factor;
-    
+
     // Apply pH error scaling
-    float error_scaling = ph_error / 0.2f; // Scale for 0.2 pH unit error
-    if (error_scaling > 2.0f) error_scaling = 2.0f; // Cap at 2x
+    float error_scaling = ph_error / PH_ERROR_SCALING_REFERENCE;
+    if (error_scaling > PH_ERROR_SCALING_MAX) error_scaling = PH_ERROR_SCALING_MAX;
     correction_amount *= error_scaling;
-    
+
     // Safety limits
-    if (correction_amount < 5.0f) correction_amount = 5.0f;   // Minimum 5ml
-    if (correction_amount > 200.0f) correction_amount = 200.0f; // Maximum 200ml
-    
+    if (correction_amount < MIN_PH_CORRECTION_ML) correction_amount = MIN_PH_CORRECTION_ML;
+    if (correction_amount > MAX_PH_CORRECTION_ML) correction_amount = MAX_PH_CORRECTION_ML;
+
+    // Check daily limit
+    if (g_state.daily_acid_dosed_ml + correction_amount > MAX_DAILY_ACID_ML) {
+        ESP_LOGW(TAG, "Daily acid limit reached: %.1fml dosed today, %.1fml requested",
+                 g_state.daily_acid_dosed_ml, correction_amount);
+        raise_alarm("ACID_DAILY_LIMIT", "Daily acid dosing limit reached");
+        return;
+    }
+
     // Check if we have enough acid
     if (g_state.acid_remaining_ml >= correction_amount) {
-        
+
         esp_err_t result = atlas_dose_acid(correction_amount);
-        
+
         if (result == ESP_OK) {
             g_state.acid_remaining_ml -= correction_amount;
+            g_state.daily_acid_dosed_ml += correction_amount;
             g_state.last_ph_correction_time = current_time;
-            
+
             // Store pH before correction for learning evaluation
             float ph_before = g_state.ph;
-            
-            // Schedule learning evaluation in 2 hours
+
+            // Schedule learning evaluation
             g_state.ph_learning_evaluation_pending = true;
-            g_state.ph_learning_evaluation_time = current_time + 7200000; // 2 hours
-            
+            g_state.ph_learning_evaluation_time = current_time + PH_LEARNING_EVAL_DELAY_MS;
+
             // Store correction data for learning
             int history_index = g_state.ph_history_index;
             g_state.ph_history[history_index].ph_before = ph_before;
             g_state.ph_history[history_index].correction_amount = correction_amount;
             g_state.ph_history[history_index].expected_change = calculate_expected_ph_change(correction_amount);
             g_state.ph_history[history_index].timestamp = current_time;
-            
-            // Save updated state to NVS
+
             system_config_save_runtime_state();
             system_config_save_learning_history();
-            
-            ESP_LOGI(TAG, "pH correction: %.1fml dosed (pH: %.2f, Target: %.2f, Error: %.2f)", 
+
+            ESP_LOGI(TAG, "pH correction: %.1fml dosed (pH: %.2f, Target: %.2f, Error: %.2f)",
                      correction_amount, ph_before, g_config.ph_target, ph_error);
-            
+
             char log_msg[128];
-            snprintf(log_msg, sizeof(log_msg), 
-                     "pH correction: %.1fml (pH %.2f→%.2f target, %.1fml remaining)", 
-                     correction_amount, ph_before, g_config.ph_target, g_state.acid_remaining_ml);
+            snprintf(log_msg, sizeof(log_msg),
+                     "pH correction: %.1fml (pH %.2f→%.2f target, %.1fml remaining, %.1fml today)",
+                     correction_amount, ph_before, g_config.ph_target,
+                     g_state.acid_remaining_ml, g_state.daily_acid_dosed_ml);
             log_event(log_msg);
-            
+
         } else {
             ESP_LOGE(TAG, "Failed to dose acid for pH correction: %s", esp_err_to_name(result));
         }
     } else {
-        ESP_LOGW(TAG, "Insufficient acid for pH correction: %.1fml needed, %.1fml available", 
+        ESP_LOGW(TAG, "Insufficient acid for pH correction: %.1fml needed, %.1fml available",
                  correction_amount, g_state.acid_remaining_ml);
     }
 }
@@ -191,28 +214,39 @@ void track_chlorinator_runtime(void)
 
 float calculate_expected_ph_change(float acid_ml)
 {
-    // Calculate expected pH change based on pool volume and acid concentration
-    // This is a simplified calculation - real pools have buffering effects
-    
-    // Convert acid volume to moles of HCl
-    float hcl_concentration_molarity = g_config.hcl_concentration_percent * 10.0f / 36.5f; // Approximate
-    float acid_liters = acid_ml / 1000.0f;
-    float hcl_moles = hcl_concentration_molarity * acid_liters;
-    
-    // Calculate concentration in pool
-    float pool_liters = g_config.pool_volume_liters;
-    float hcl_concentration_in_pool = hcl_moles / pool_liters;
-    
-    // Estimate pH change (simplified, ignoring buffering)
-    float expected_ph_change = -log10f(hcl_concentration_in_pool + 1e-8f) / 10.0f;
-    
-    // Apply buffering factor (pools resist pH change)
-    expected_ph_change *= 0.3f; // Typical buffering reduces effectiveness
-    
+    // Calculate expected pH change using proper acid-base chemistry.
+    //
+    // HCl density ~1.16 g/mL at 32.5%. Molecular weight of HCl = 36.46 g/mol.
+    // acid_ml of solution at X% concentration → moles of H+ added to pool.
+
+    float hcl_density = 1.16f; // g/mL for ~32% HCl
+    float hcl_mw = 36.46f;    // g/mol
+
+    // Moles of HCl = (concentration% / 100) * volume_mL * density_g/mL / molecular_weight
+    float acid_moles = (g_config.hcl_concentration_percent / 100.0f) *
+                       acid_ml * hcl_density / hcl_mw;
+
+    // Current H+ concentration from existing pH
+    float initial_h = powf(10.0f, -g_state.ph);
+
+    // Additional H+ concentration in pool
+    float h_added = acid_moles / g_config.pool_volume_liters;
+
+    // New total H+ concentration
+    float final_h = initial_h + h_added;
+
+    // Expected pH change (negative = pH decreases = more acidic)
+    float new_ph = -log10f(final_h);
+    float expected_ph_change = new_ph - g_state.ph;
+
+    // Apply buffering factor - pool alkalinity resists pH change
+    // Typical pool (80-120 ppm alkalinity) buffers ~70% of theoretical change
+    expected_ph_change *= 0.3f;
+
     // Safety limits
     if (expected_ph_change < -2.0f) expected_ph_change = -2.0f;
     if (expected_ph_change > 0.0f) expected_ph_change = 0.0f;
-    
+
     return expected_ph_change;
 }
 

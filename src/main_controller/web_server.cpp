@@ -2,6 +2,7 @@
 #include "esp_http_server.h"
 #include "cJSON.h"
 #include "web_assets.h"
+#include "esp_random.h"
 
 // Define MIN macro if not available
 #ifndef MIN
@@ -13,6 +14,132 @@ static httpd_handle_t server = NULL;
 
 // WebSocket connection tracking
 static int ws_fd = -1;
+
+// --- Authentication ---
+static char api_token[API_TOKEN_LENGTH + 1] = {0};
+static uint64_t token_last_access = 0;
+
+// Generate a random hex token
+static void generate_random_token(char *buf, size_t len)
+{
+    const char hex[] = "0123456789abcdef";
+    for (size_t i = 0; i < len; i++) {
+        buf[i] = hex[esp_random() % 16];
+    }
+    buf[len] = '\0';
+}
+
+bool web_server_verify_auth(httpd_req_t *req)
+{
+    // Status endpoint is read-only, allow without auth
+    // All mutating endpoints require a valid token
+
+    if (api_token[0] == '\0') {
+        // No token set yet - auth not configured, allow access
+        // This enables initial setup before password is configured
+        return true;
+    }
+
+    char auth_header[128] = {0};
+    if (httpd_req_get_hdr_value_str(req, "Authorization", auth_header, sizeof(auth_header)) != ESP_OK) {
+        return false;
+    }
+
+    // Expect "Bearer <token>"
+    if (strncmp(auth_header, "Bearer ", 7) != 0) {
+        return false;
+    }
+
+    const char *token = auth_header + 7;
+    if (strcmp(token, api_token) != 0) {
+        return false;
+    }
+
+    // Check session timeout
+    uint64_t now = get_timestamp_ms();
+    if (token_last_access > 0 && (now - token_last_access) > (uint64_t)API_SESSION_TIMEOUT_S * 1000) {
+        api_token[0] = '\0'; // Expire the token
+        return false;
+    }
+
+    token_last_access = now;
+    return true;
+}
+
+// Login endpoint - accepts password, returns token
+static esp_err_t api_login_handler(httpd_req_t *req)
+{
+    if (req->method != HTTP_POST) {
+        httpd_resp_send_err(req, HTTPD_405_METHOD_NOT_ALLOWED, "Method not allowed");
+        return ESP_FAIL;
+    }
+
+    char content[128];
+    size_t recv_size = MIN(req->content_len, sizeof(content) - 1);
+    int ret = httpd_req_recv(req, content, recv_size);
+    if (ret <= 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Failed to receive data");
+        return ESP_FAIL;
+    }
+    content[ret] = '\0';
+
+    cJSON *json = cJSON_Parse(content);
+    if (!json) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    cJSON *pw_item = cJSON_GetObjectItem(json, "password");
+    if (!cJSON_IsString(pw_item)) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing password");
+        cJSON_Delete(json);
+        return ESP_FAIL;
+    }
+
+    // Compare against stored WiFi password as the system password
+    // (In production, use a separate admin password stored in NVS)
+    if (strcmp(pw_item->valuestring, g_config.wifi_password) != 0) {
+        httpd_resp_send_err(req, HTTPD_401_UNAUTHORIZED, "Invalid password");
+        cJSON_Delete(json);
+        return ESP_FAIL;
+    }
+
+    // Generate new session token
+    generate_random_token(api_token, API_TOKEN_LENGTH);
+    token_last_access = get_timestamp_ms();
+
+    httpd_resp_set_type(req, "application/json");
+    char response[128];
+    snprintf(response, sizeof(response), "{\"token\":\"%s\"}", api_token);
+    httpd_resp_sendstr(req, response);
+
+    cJSON_Delete(json);
+    ESP_LOGI(TAG, "New API session created");
+    return ESP_OK;
+}
+
+// Helper: set CORS header using request origin (not wildcard)
+static void set_cors_header(httpd_req_t *req)
+{
+    char origin[128] = {0};
+    if (httpd_req_get_hdr_value_str(req, "Origin", origin, sizeof(origin)) == ESP_OK) {
+        // Only allow same-network origins (http:// on local IPs)
+        if (strncmp(origin, "http://192.168.", 15) == 0 ||
+            strncmp(origin, "http://10.", 10) == 0 ||
+            strncmp(origin, "http://172.", 11) == 0 ||
+            strncmp(origin, "http://localhost", 16) == 0) {
+            httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", origin);
+        }
+    }
+    // If no valid origin, no CORS header is set (browser blocks cross-origin)
+}
+
+// Helper: send auth error
+static esp_err_t send_auth_required(httpd_req_t *req)
+{
+    httpd_resp_send_err(req, HTTPD_401_UNAUTHORIZED, "Authentication required");
+    return ESP_FAIL;
+}
 
 // Serve main HTML page
 static esp_err_t index_handler(httpd_req_t *req)
@@ -58,11 +185,11 @@ static esp_err_t manifest_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-// API: Get system status
+// API: Get system status (read-only, no auth required)
 static esp_err_t api_status_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "application/json");
-    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    set_cors_header(req);
     
     cJSON *json = cJSON_CreateObject();
     cJSON *sensors = cJSON_CreateObject();
@@ -85,6 +212,12 @@ static esp_err_t api_status_handler(httpd_req_t *req)
     cJSON_AddBoolToObject(equipment, "pump_relay_on", g_state.pump_relay_on);
     cJSON_AddBoolToObject(equipment, "chlorinator_relay_on", g_state.chlorinator_relay_on);
     cJSON_AddNumberToObject(equipment, "chlorinator_current", g_state.chlorinator_current);
+    cJSON_AddNumberToObject(equipment, "pump_power_watts", g_state.pump_power_watts);
+    cJSON_AddNumberToObject(equipment, "pump_voltage", g_state.pump_voltage);
+    cJSON_AddNumberToObject(equipment, "chlorinator_power_watts", g_state.chlorinator_power_watts);
+    cJSON_AddNumberToObject(equipment, "chlorinator_voltage", g_state.chlorinator_voltage);
+    cJSON_AddBoolToObject(equipment, "shelly_reachable", g_state.shelly_reachable);
+    cJSON_AddNumberToObject(equipment, "shelly_temperature", g_state.shelly_temperature);
     cJSON_AddBoolToObject(equipment, "light_relay_on", g_state.light_relay_on);
     cJSON_AddNumberToObject(equipment, "current_light_mode", g_state.current_light_mode);
     
@@ -112,6 +245,7 @@ static esp_err_t api_status_handler(httpd_req_t *req)
     cJSON_AddBoolToObject(alarms, "pump_alarm", g_state.pump_alarm_active);
     cJSON_AddBoolToObject(alarms, "chlorinator_alarm", g_state.chlorinator_alarm_active);
     cJSON_AddBoolToObject(alarms, "acid_low_alarm", g_state.acid_low_alarm_active);
+    cJSON_AddBoolToObject(alarms, "shelly_alarm", g_state.shelly_alarm_active);
     
     // Network status
     cJSON *network = cJSON_CreateObject();
@@ -147,139 +281,171 @@ static esp_err_t api_status_handler(httpd_req_t *req)
 // API: Control lighting
 static esp_err_t api_lighting_handler(httpd_req_t *req)
 {
-    if (req->method == HTTP_POST) {
-        char content[100];
-        size_t recv_size = MIN(req->content_len, sizeof(content) - 1);
-        
-        int ret = httpd_req_recv(req, content, recv_size);
-        if (ret <= 0) {
-            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Failed to receive data");
-            return ESP_FAIL;
-        }
-        content[ret] = '\0';
-        
-        cJSON *json = cJSON_Parse(content);
-        if (json == NULL) {
-            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
-            return ESP_FAIL;
-        }
-        
-        cJSON *mode_item = cJSON_GetObjectItem(json, "mode");
-        if (cJSON_IsNumber(mode_item)) {
-            int mode = mode_item->valueint;
-            if (mode >= 0 && mode <= 12) {
-                set_light_mode((light_mode_t)mode);
-                
-                httpd_resp_set_type(req, "application/json");
-                httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-                httpd_resp_sendstr(req, "{\"status\":\"success\"}");
-            } else {
-                httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid light mode");
-            }
-        } else {
-            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing mode parameter");
-        }
-        
-        cJSON_Delete(json);
-    } else {
+    if (req->method != HTTP_POST) {
         httpd_resp_send_err(req, HTTPD_405_METHOD_NOT_ALLOWED, "Method not allowed");
+        return ESP_FAIL;
     }
-    
+    if (!web_server_verify_auth(req)) return send_auth_required(req);
+
+    char content[100];
+    size_t recv_size = MIN(req->content_len, sizeof(content) - 1);
+
+    int ret = httpd_req_recv(req, content, recv_size);
+    if (ret <= 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Failed to receive data");
+        return ESP_FAIL;
+    }
+    content[ret] = '\0';
+
+    cJSON *json = cJSON_Parse(content);
+    if (json == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    cJSON *mode_item = cJSON_GetObjectItem(json, "mode");
+    if (cJSON_IsNumber(mode_item)) {
+        int mode = mode_item->valueint;
+        if (mode >= 0 && mode < LIGHT_MODE_COUNT) {
+            set_light_mode((light_mode_t)mode);
+
+            httpd_resp_set_type(req, "application/json");
+            set_cors_header(req);
+            httpd_resp_sendstr(req, "{\"status\":\"success\"}");
+        } else {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid light mode (0-12)");
+        }
+    } else {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing mode parameter");
+    }
+
+    cJSON_Delete(json);
     return ESP_OK;
 }
 
 // API: Manual acid dose
 static esp_err_t api_dose_acid_handler(httpd_req_t *req)
 {
-    if (req->method == HTTP_POST) {
-        char content[100];
-        size_t recv_size = MIN(req->content_len, sizeof(content) - 1);
-        
-        int ret = httpd_req_recv(req, content, recv_size);
-        if (ret <= 0) {
-            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Failed to receive data");
-            return ESP_FAIL;
-        }
-        content[ret] = '\0';
-        
-        cJSON *json = cJSON_Parse(content);
-        if (json == NULL) {
-            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
-            return ESP_FAIL;
-        }
-        
-        cJSON *volume_item = cJSON_GetObjectItem(json, "volume");
-        if (cJSON_IsNumber(volume_item)) {
-            float volume = (float)volume_item->valuedouble;
-            manual_acid_dose(volume);
-            
-            httpd_resp_set_type(req, "application/json");
-            httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-            httpd_resp_sendstr(req, "{\"status\":\"success\"}");
-        } else {
-            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing volume parameter");
-        }
-        
-        cJSON_Delete(json);
-    } else {
+    if (req->method != HTTP_POST) {
         httpd_resp_send_err(req, HTTPD_405_METHOD_NOT_ALLOWED, "Method not allowed");
+        return ESP_FAIL;
     }
-    
+    if (!web_server_verify_auth(req)) return send_auth_required(req);
+
+    char content[100];
+    size_t recv_size = MIN(req->content_len, sizeof(content) - 1);
+
+    int ret = httpd_req_recv(req, content, recv_size);
+    if (ret <= 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Failed to receive data");
+        return ESP_FAIL;
+    }
+    content[ret] = '\0';
+
+    cJSON *json = cJSON_Parse(content);
+    if (json == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    cJSON *volume_item = cJSON_GetObjectItem(json, "volume");
+    if (cJSON_IsNumber(volume_item)) {
+        float volume = (float)volume_item->valuedouble;
+
+        // Input validation
+        if (volume <= 0.0f || volume > 500.0f) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Volume must be 0.1-500ml");
+            cJSON_Delete(json);
+            return ESP_FAIL;
+        }
+
+        // Check daily limit
+        if (g_state.daily_acid_dosed_ml + volume > MAX_DAILY_ACID_ML) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Would exceed daily acid limit");
+            cJSON_Delete(json);
+            return ESP_FAIL;
+        }
+
+        manual_acid_dose(volume);
+        g_state.daily_acid_dosed_ml += volume;
+
+        httpd_resp_set_type(req, "application/json");
+        set_cors_header(req);
+        httpd_resp_sendstr(req, "{\"status\":\"success\"}");
+    } else {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing volume parameter");
+    }
+
+    cJSON_Delete(json);
     return ESP_OK;
 }
 
 // API: Update configuration
 static esp_err_t api_config_handler(httpd_req_t *req)
 {
-    if (req->method == HTTP_POST) {
-        char content[500];
-        size_t recv_size = MIN(req->content_len, sizeof(content) - 1);
-        
-        int ret = httpd_req_recv(req, content, recv_size);
-        if (ret <= 0) {
-            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Failed to receive data");
-            return ESP_FAIL;
-        }
-        content[ret] = '\0';
-        
-        cJSON *json = cJSON_Parse(content);
-        if (json == NULL) {
-            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
-            return ESP_FAIL;
-        }
-        
-        // Update pH settings
-        cJSON *ph_target = cJSON_GetObjectItem(json, "ph_target");
-        if (cJSON_IsNumber(ph_target)) {
-            system_config_update_ph_settings((float)ph_target->valuedouble, 
-                                            g_config.ph_correction_base_amount, 
-                                            g_config.ph_correction_learning_gain);
-        }
-        
-        // Update chlorinator duty cycle
-        cJSON *duty_cycle = cJSON_GetObjectItem(json, "chlorinator_duty_cycle");
-        if (cJSON_IsNumber(duty_cycle)) {
-            system_config_update_chlorinator_settings((float)duty_cycle->valuedouble, 
-                                                     g_config.duty_cycle_period_ms);
-        }
-        
-        httpd_resp_set_type(req, "application/json");
-        httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-        httpd_resp_sendstr(req, "{\"status\":\"success\"}");
-        
-        cJSON_Delete(json);
-    } else {
+    if (req->method != HTTP_POST) {
         httpd_resp_send_err(req, HTTPD_405_METHOD_NOT_ALLOWED, "Method not allowed");
+        return ESP_FAIL;
     }
-    
+    if (!web_server_verify_auth(req)) return send_auth_required(req);
+
+    char content[500];
+    size_t recv_size = MIN(req->content_len, sizeof(content) - 1);
+
+    int ret = httpd_req_recv(req, content, recv_size);
+    if (ret <= 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Failed to receive data");
+        return ESP_FAIL;
+    }
+    content[ret] = '\0';
+
+    cJSON *json = cJSON_Parse(content);
+    if (json == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    // Update pH settings with validation
+    cJSON *ph_target = cJSON_GetObjectItem(json, "ph_target");
+    if (cJSON_IsNumber(ph_target)) {
+        float val = (float)ph_target->valuedouble;
+        if (val >= 6.8f && val <= 8.0f) {
+            system_config_update_ph_settings(val,
+                                            g_config.ph_correction_base_amount,
+                                            g_config.ph_correction_learning_gain);
+        } else {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "pH target must be 6.8-8.0");
+            cJSON_Delete(json);
+            return ESP_FAIL;
+        }
+    }
+
+    // Update chlorinator duty cycle with validation
+    cJSON *duty_cycle = cJSON_GetObjectItem(json, "chlorinator_duty_cycle");
+    if (cJSON_IsNumber(duty_cycle)) {
+        float val = (float)duty_cycle->valuedouble;
+        if (val >= 0.0f && val <= 100.0f) {
+            system_config_update_chlorinator_settings(val, g_config.duty_cycle_period_ms);
+        } else {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Duty cycle must be 0-100%");
+            cJSON_Delete(json);
+            return ESP_FAIL;
+        }
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    set_cors_header(req);
+    httpd_resp_sendstr(req, "{\"status\":\"success\"}");
+
+    cJSON_Delete(json);
     return ESP_OK;
 }
 
-// Simple polling endpoint for real-time data (replaces WebSocket)
+// Simple polling endpoint for real-time data (read-only, no auth required)
 static esp_err_t api_realtime_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "application/json");
-    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    set_cors_header(req);
     httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
     
     // Create JSON with current system status
@@ -289,6 +455,9 @@ static esp_err_t api_realtime_handler(httpd_req_t *req)
     cJSON_AddNumberToObject(json, "orp", g_state.orp);
     cJSON_AddNumberToObject(json, "pump_current", g_state.pump_current);
     cJSON_AddNumberToObject(json, "chlorinator_current", g_state.chlorinator_current);
+    cJSON_AddNumberToObject(json, "pump_power_watts", g_state.pump_power_watts);
+    cJSON_AddNumberToObject(json, "chlorinator_power_watts", g_state.chlorinator_power_watts);
+    cJSON_AddBoolToObject(json, "shelly_reachable", g_state.shelly_reachable);
     cJSON_AddBoolToObject(json, "pump_healthy", g_state.pump_healthy);
     cJSON_AddBoolToObject(json, "light_relay_on", g_state.light_relay_on);
     cJSON_AddNumberToObject(json, "current_light_mode", g_state.current_light_mode);
@@ -304,55 +473,55 @@ static esp_err_t api_realtime_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-// API: Emergency stop
+// API: Emergency stop (auth required for security)
 static esp_err_t api_emergency_stop_handler(httpd_req_t *req)
 {
-    if (req->method == HTTP_POST) {
-        // Emergency stop all equipment
-        set_pump_relay(false);
-        set_chlorinator_relay(false);
-        set_light_mode(LIGHT_OFF);
-        atlas_stop_dosing();
-        
-        // Log the emergency stop
-        log_event("Emergency stop activated via web interface");
-        
-        httpd_resp_set_type(req, "application/json");
-        httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-        httpd_resp_sendstr(req, "{\"status\":\"success\",\"message\":\"Emergency stop activated\"}");
-        
-        ESP_LOGW(TAG, "Emergency stop activated via web interface");
-        return ESP_OK;
-    } else {
+    if (req->method != HTTP_POST) {
         httpd_resp_send_err(req, HTTPD_405_METHOD_NOT_ALLOWED, "Method not allowed");
         return ESP_FAIL;
     }
+    if (!web_server_verify_auth(req)) return send_auth_required(req);
+
+    // Use centralized emergency stop
+    emergency_stop_activate();
+
+    httpd_resp_set_type(req, "application/json");
+    set_cors_header(req);
+    httpd_resp_sendstr(req, "{\"status\":\"success\",\"message\":\"Emergency stop activated\"}");
+
+    ESP_LOGW(TAG, "Emergency stop activated via web interface");
+    return ESP_OK;
 }
 
 // API: Reset settings to defaults
 static esp_err_t api_reset_settings_handler(httpd_req_t *req)
 {
-    if (req->method == HTTP_POST) {
-        // Reset system configuration to defaults
-        system_config_reset_to_defaults();
-        system_config_save();
-        
-        httpd_resp_set_type(req, "application/json");
-        httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-        httpd_resp_sendstr(req, "{\"status\":\"success\",\"message\":\"Settings reset to defaults\"}");
-        
-        ESP_LOGI(TAG, "Settings reset to defaults via web interface");
-        return ESP_OK;
-    } else {
+    if (req->method != HTTP_POST) {
         httpd_resp_send_err(req, HTTPD_405_METHOD_NOT_ALLOWED, "Method not allowed");
         return ESP_FAIL;
     }
+    if (!web_server_verify_auth(req)) return send_auth_required(req);
+
+    system_config_reset_to_defaults();
+    system_config_save();
+
+    httpd_resp_set_type(req, "application/json");
+    set_cors_header(req);
+    httpd_resp_sendstr(req, "{\"status\":\"success\",\"message\":\"Settings reset to defaults\"}");
+
+    ESP_LOGI(TAG, "Settings reset to defaults via web interface");
+    return ESP_OK;
 }
 
 // API: Sensor calibration
 static esp_err_t api_sensor_calibration_handler(httpd_req_t *req)
 {
-    if (req->method == HTTP_POST) {
+    if (req->method != HTTP_POST) {
+        httpd_resp_send_err(req, HTTPD_405_METHOD_NOT_ALLOWED, "Method not allowed");
+        return ESP_FAIL;
+    }
+    if (!web_server_verify_auth(req)) return send_auth_required(req);
+    {
         char content[200];
         size_t recv_size = MIN(req->content_len, sizeof(content) - 1);
         
@@ -418,29 +587,32 @@ static esp_err_t api_sensor_calibration_handler(httpd_req_t *req)
         
         // Send response
         httpd_resp_set_type(req, "application/json");
-        httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-        
+        set_cors_header(req);
+
         cJSON *response_json = cJSON_CreateObject();
         cJSON_AddStringToObject(response_json, "status", (result == ESP_OK) ? "success" : "error");
         cJSON_AddStringToObject(response_json, "message", response_msg);
-        
+
         char *response_string = cJSON_Print(response_json);
         httpd_resp_sendstr(req, response_string);
-        
+
         free(response_string);
         cJSON_Delete(response_json);
         cJSON_Delete(json);
-    } else {
-        httpd_resp_send_err(req, HTTPD_405_METHOD_NOT_ALLOWED, "Method not allowed");
     }
-    
+
     return ESP_OK;
 }
 
 // API: Refill acid bottle
 static esp_err_t api_refill_acid_handler(httpd_req_t *req)
 {
-    if (req->method == HTTP_POST) {
+    if (req->method != HTTP_POST) {
+        httpd_resp_send_err(req, HTTPD_405_METHOD_NOT_ALLOWED, "Method not allowed");
+        return ESP_FAIL;
+    }
+    if (!web_server_verify_auth(req)) return send_auth_required(req);
+    {
         char content[100];
         size_t recv_size = MIN(req->content_len, sizeof(content) - 1);
         
@@ -464,10 +636,10 @@ static esp_err_t api_refill_acid_handler(httpd_req_t *req)
                 refill_acid_bottle(volume);
                 
                 httpd_resp_set_type(req, "application/json");
-                httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-                
+                set_cors_header(req);
+
                 char response[100];
-                snprintf(response, sizeof(response), 
+                snprintf(response, sizeof(response),
                         "{\"status\":\"success\",\"message\":\"Acid bottle refilled to %.0fml\"}", volume);
                 httpd_resp_sendstr(req, response);
             } else {
@@ -476,19 +648,22 @@ static esp_err_t api_refill_acid_handler(httpd_req_t *req)
         } else {
             httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing volume parameter");
         }
-        
+
         cJSON_Delete(json);
-    } else {
-        httpd_resp_send_err(req, HTTPD_405_METHOD_NOT_ALLOWED, "Method not allowed");
     }
-    
+
     return ESP_OK;
 }
 
 // API: Pump calibration
 static esp_err_t api_pump_calibration_handler(httpd_req_t *req)
 {
-    if (req->method == HTTP_POST) {
+    if (req->method != HTTP_POST) {
+        httpd_resp_send_err(req, HTTPD_405_METHOD_NOT_ALLOWED, "Method not allowed");
+        return ESP_FAIL;
+    }
+    if (!web_server_verify_auth(req)) return send_auth_required(req);
+    {
         char content[200];
         size_t recv_size = MIN(req->content_len, sizeof(content) - 1);
         
@@ -566,22 +741,69 @@ static esp_err_t api_pump_calibration_handler(httpd_req_t *req)
         
         // Send response
         httpd_resp_set_type(req, "application/json");
-        httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-        
+        set_cors_header(req);
+
         cJSON *response_json = cJSON_CreateObject();
         cJSON_AddStringToObject(response_json, "status", (result == ESP_OK) ? "success" : "error");
         cJSON_AddStringToObject(response_json, "message", response_msg);
-        
+
         char *response_string = cJSON_Print(response_json);
         httpd_resp_sendstr(req, response_string);
-        
+
         free(response_string);
         cJSON_Delete(response_json);
         cJSON_Delete(json);
-    } else {
-        httpd_resp_send_err(req, HTTPD_405_METHOD_NOT_ALLOWED, "Method not allowed");
     }
-    
+
+    return ESP_OK;
+}
+
+// API: Configure Shelly 2PM Pro settings
+static esp_err_t api_shelly_config_handler(httpd_req_t *req)
+{
+    if (req->method != HTTP_POST) {
+        httpd_resp_send_err(req, HTTPD_405_METHOD_NOT_ALLOWED, "Method not allowed");
+        return ESP_FAIL;
+    }
+    if (!web_server_verify_auth(req)) return send_auth_required(req);
+
+    char content[256];
+    size_t recv_size = MIN(req->content_len, sizeof(content) - 1);
+    int ret = httpd_req_recv(req, content, recv_size);
+    if (ret <= 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Failed to receive data");
+        return ESP_FAIL;
+    }
+    content[ret] = '\0';
+
+    cJSON *json = cJSON_Parse(content);
+    if (!json) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    cJSON *ip_item = cJSON_GetObjectItem(json, "ip");
+    cJSON *user_item = cJSON_GetObjectItem(json, "user");
+    cJSON *pass_item = cJSON_GetObjectItem(json, "password");
+
+    const char *ip = cJSON_IsString(ip_item) ? ip_item->valuestring : g_config.shelly_ip;
+    const char *user = cJSON_IsString(user_item) ? user_item->valuestring : g_config.shelly_user;
+    const char *pass = cJSON_IsString(pass_item) ? pass_item->valuestring : g_config.shelly_password;
+
+    if (strlen(ip) < 7 || strlen(ip) > 15) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid IP address");
+        cJSON_Delete(json);
+        return ESP_FAIL;
+    }
+
+    system_config_update_shelly_settings(ip, user, pass);
+
+    httpd_resp_set_type(req, "application/json");
+    set_cors_header(req);
+    httpd_resp_sendstr(req, "{\"status\":\"success\",\"message\":\"Shelly settings updated. Restart required.\"}");
+
+    cJSON_Delete(json);
+    ESP_LOGI(TAG, "Shelly settings updated via web interface: IP=%s", ip);
     return ESP_OK;
 }
 
@@ -592,25 +814,42 @@ void web_server_send_realtime_data(void)
     // Web clients can poll this endpoint for updates
 }
 
+// API: Reset emergency stop (auth required)
+static esp_err_t api_emergency_reset_handler(httpd_req_t *req)
+{
+    if (req->method != HTTP_POST) {
+        httpd_resp_send_err(req, HTTPD_405_METHOD_NOT_ALLOWED, "Method not allowed");
+        return ESP_FAIL;
+    }
+    if (!web_server_verify_auth(req)) return send_auth_required(req);
+
+    emergency_stop_reset();
+
+    httpd_resp_set_type(req, "application/json");
+    set_cors_header(req);
+    httpd_resp_sendstr(req, "{\"status\":\"success\",\"message\":\"Emergency stop reset\"}");
+
+    ESP_LOGW(TAG, "Emergency stop reset via web interface");
+    return ESP_OK;
+}
+
 esp_err_t web_server_init(void)
 {
     ESP_LOGI(TAG, "Initializing Web Server...");
-    
-    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_open_sockets = 7;
-    config.stack_size = 8192;
-    
+    // Auth token starts empty - no auth enforced until first login
+    api_token[0] = '\0';
     return ESP_OK;
 }
 
 esp_err_t web_server_start(void)
 {
     ESP_LOGI(TAG, "Starting Web Server...");
-    
+
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.max_open_sockets = 7;
     config.stack_size = 8192;
-    
+    config.max_uri_handlers = 17;
+
     if (httpd_start(&server, &config) == ESP_OK) {
         
         // Static file handlers
@@ -727,7 +966,34 @@ esp_err_t web_server_start(void)
             .user_ctx = NULL
         };
         httpd_register_uri_handler(server, &api_realtime_uri);
-        
+
+        // Login endpoint
+        httpd_uri_t api_login_uri = {
+            .uri = "/api/login",
+            .method = HTTP_POST,
+            .handler = api_login_handler,
+            .user_ctx = NULL
+        };
+        httpd_register_uri_handler(server, &api_login_uri);
+
+        // Emergency reset endpoint
+        httpd_uri_t api_emergency_reset_uri = {
+            .uri = "/api/emergency_reset",
+            .method = HTTP_POST,
+            .handler = api_emergency_reset_handler,
+            .user_ctx = NULL
+        };
+        httpd_register_uri_handler(server, &api_emergency_reset_uri);
+
+        // Shelly config endpoint
+        httpd_uri_t api_shelly_config_uri = {
+            .uri = "/api/shelly_config",
+            .method = HTTP_POST,
+            .handler = api_shelly_config_handler,
+            .user_ctx = NULL
+        };
+        httpd_register_uri_handler(server, &api_shelly_config_uri);
+
         ESP_LOGI(TAG, "Web Server started successfully");
         return ESP_OK;
     }

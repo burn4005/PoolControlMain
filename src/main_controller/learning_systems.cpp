@@ -74,31 +74,42 @@ void evaluate_ph_correction_effectiveness(void)
 
 void update_ph_learning_gain(float effectiveness_ratio)
 {
-    // Adaptive learning gain adjustment
-    float current_gain = g_config.ph_correction_learning_gain;
-    float adjustment_rate = g_config.learning_rate / 100.0f; // Convert percentage to decimal
-    
-    if (effectiveness_ratio < 0.8f) {
-        // Correction was less effective than expected - increase gain
-        float increase = (0.8f - effectiveness_ratio) * adjustment_rate * 100.0f;
-        current_gain += increase;
-    } else if (effectiveness_ratio > 1.2f) {
-        // Correction was more effective than expected - decrease gain
-        float decrease = (effectiveness_ratio - 1.2f) * adjustment_rate * 100.0f;
-        current_gain -= decrease;
+    // Validate input
+    if (effectiveness_ratio < LEARNING_EFFECTIVENESS_MIN ||
+        effectiveness_ratio > LEARNING_EFFECTIVENESS_MAX) {
+        ESP_LOGW(TAG, "Invalid effectiveness ratio: %.2f, ignoring", effectiveness_ratio);
+        return;
     }
-    
-    // Apply limits to learning gain
-    if (current_gain < 5.0f) current_gain = 5.0f;     // Minimum 5%
-    if (current_gain > 50.0f) current_gain = 50.0f;   // Maximum 50%
-    
-    g_config.ph_correction_learning_gain = current_gain;
-    
-    // Update last correction percentage for next correction
-    g_state.last_ph_correction_perc = current_gain;
-    
-    // Save updated configuration
+
+    float current_gain = g_config.ph_correction_learning_gain;
+    float adjustment_rate = g_config.learning_rate / 100.0f;
+
+    float adjustment = 0.0f;
+    if (effectiveness_ratio < 0.8f) {
+        adjustment = (0.8f - effectiveness_ratio) * adjustment_rate * 100.0f;
+    } else if (effectiveness_ratio > 1.2f) {
+        adjustment = -(effectiveness_ratio - 1.2f) * adjustment_rate * 100.0f;
+    }
+
+    // Limit per-step change to 20% of current value
+    float max_change = current_gain * LEARNING_MAX_CHANGE_PERCENT;
+    if (max_change < 1.0f) max_change = 1.0f; // At least 1% change allowed
+    if (adjustment > max_change) adjustment = max_change;
+    if (adjustment < -max_change) adjustment = -max_change;
+
+    float new_gain = current_gain + adjustment;
+
+    // Apply hard limits
+    if (new_gain < PH_LEARNING_GAIN_MIN) new_gain = PH_LEARNING_GAIN_MIN;
+    if (new_gain > PH_LEARNING_GAIN_MAX) new_gain = PH_LEARNING_GAIN_MAX;
+
+    g_config.ph_correction_learning_gain = new_gain;
+    g_state.last_ph_correction_perc = new_gain;
+
     system_config_save();
+
+    ESP_LOGI(TAG, "pH learning gain: %.1f%% → %.1f%% (effectiveness %.2f)",
+             current_gain, new_gain, effectiveness_ratio);
 }
 
 void evaluate_orp_adjustment_effectiveness(void)
@@ -152,28 +163,40 @@ void evaluate_orp_adjustment_effectiveness(void)
 
 void update_orp_learning_gain(float effectiveness_ratio)
 {
-    // Adaptive learning gain adjustment for ORP
+    // Validate input
+    if (effectiveness_ratio < LEARNING_EFFECTIVENESS_MIN ||
+        effectiveness_ratio > LEARNING_EFFECTIVENESS_MAX) {
+        ESP_LOGW(TAG, "Invalid ORP effectiveness ratio: %.2f, ignoring", effectiveness_ratio);
+        return;
+    }
+
     float current_gain = g_config.orp_learning_gain;
     float adjustment_rate = g_config.learning_rate / 100.0f;
-    
+
+    float adjustment = 0.0f;
     if (effectiveness_ratio < 0.8f) {
-        // Adjustment was less effective than expected - increase gain
-        float increase = (0.8f - effectiveness_ratio) * adjustment_rate * 100.0f;
-        current_gain += increase;
+        adjustment = (0.8f - effectiveness_ratio) * adjustment_rate * 100.0f;
     } else if (effectiveness_ratio > 1.2f) {
-        // Adjustment was more effective than expected - decrease gain
-        float decrease = (effectiveness_ratio - 1.2f) * adjustment_rate * 100.0f;
-        current_gain -= decrease;
+        adjustment = -(effectiveness_ratio - 1.2f) * adjustment_rate * 100.0f;
     }
-    
-    // Apply limits to ORP learning gain
-    if (current_gain < 5.0f) current_gain = 5.0f;     // Minimum 5%
-    if (current_gain > 30.0f) current_gain = 30.0f;   // Maximum 30%
-    
-    g_config.orp_learning_gain = current_gain;
-    
-    // Save updated configuration
+
+    // Limit per-step change to 20% of current value
+    float max_change = current_gain * LEARNING_MAX_CHANGE_PERCENT;
+    if (max_change < 1.0f) max_change = 1.0f;
+    if (adjustment > max_change) adjustment = max_change;
+    if (adjustment < -max_change) adjustment = -max_change;
+
+    float new_gain = current_gain + adjustment;
+
+    if (new_gain < ORP_LEARNING_GAIN_MIN) new_gain = ORP_LEARNING_GAIN_MIN;
+    if (new_gain > ORP_LEARNING_GAIN_MAX) new_gain = ORP_LEARNING_GAIN_MAX;
+
+    g_config.orp_learning_gain = new_gain;
+
     system_config_save();
+
+    ESP_LOGI(TAG, "ORP learning gain: %.1f%% → %.1f%% (effectiveness %.2f)",
+             current_gain, new_gain, effectiveness_ratio);
 }
 
 void adjust_chlorinator_for_orp(void)
@@ -228,9 +251,9 @@ void adjust_chlorinator_for_orp(void)
         g_state.orp_history[history_index].expected_orp_change = -orp_error * 0.7f; // Expect 70% correction
         g_state.orp_history[history_index].timestamp = current_time;
         
-        // Schedule learning evaluation in 30 minutes
+        // Schedule learning evaluation
         g_state.orp_learning_evaluation_pending = true;
-        g_state.orp_learning_evaluation_time = current_time + 1800000; // 30 minutes
+        g_state.orp_learning_evaluation_time = current_time + ORP_LEARNING_EVAL_DELAY_MS;
         
         // Update chlorinator duty cycle
         system_config_update_chlorinator_settings(new_duty_cycle, g_config.duty_cycle_period_ms);
@@ -256,7 +279,7 @@ void update_base_acid_learning(void)
     
     // Only evaluate once per day
     if (last_base_acid_learning > 0 && 
-        (current_time - last_base_acid_learning) < 86400000) { // 24 hours
+        (current_time - last_base_acid_learning) < BASE_ACID_LEARNING_INTERVAL_MS) {
         return;
     }
     
@@ -266,7 +289,7 @@ void update_base_acid_learning(void)
     
     for (int i = 0; i < 10; i++) {
         if (g_state.ph_history[i].timestamp > 0 && 
-            (current_time - g_state.ph_history[i].timestamp) < 86400000) { // Last 24 hours
+            (current_time - g_state.ph_history[i].timestamp) < BASE_ACID_LEARNING_INTERVAL_MS) {
             ph_sum += g_state.ph_history[i].ph_before;
             valid_readings++;
         }

@@ -2,9 +2,9 @@
 
 static const char *TAG = "WIFI_MANAGER";
 
-// WiFi Configuration - Hard coded credentials
-#define WIFI_SSID "YourPoolWiFi"
-#define WIFI_PASSWORD "YourPoolPassword"
+// WiFi Configuration
+#define WIFI_DEFAULT_SSID "PoolControl_Setup"
+#define WIFI_DEFAULT_PASSWORD ""
 #define WIFI_MAXIMUM_RETRY 5
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT BIT1
@@ -86,20 +86,25 @@ esp_err_t wifi_manager_init(void)
                                                         NULL,
                                                         &instance_got_ip));
     
-    // Configure WiFi
+    // Configure WiFi - use credentials from NVS config (set via web/HMI)
     wifi_config_t wifi_config;
     memset(&wifi_config, 0, sizeof(wifi_config_t));
-    strcpy((char*)wifi_config.sta.ssid, WIFI_SSID);
-    strcpy((char*)wifi_config.sta.password, WIFI_PASSWORD);
-    wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+
+    // Use NVS-stored credentials, fall back to defaults if empty
+    const char *ssid = (strlen(g_config.wifi_ssid) > 0) ? g_config.wifi_ssid : WIFI_DEFAULT_SSID;
+    const char *password = (strlen(g_config.wifi_password) > 0) ? g_config.wifi_password : WIFI_DEFAULT_PASSWORD;
+
+    strncpy((char*)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid) - 1);
+    strncpy((char*)wifi_config.sta.password, password, sizeof(wifi_config.sta.password) - 1);
+    wifi_config.sta.threshold.authmode = (strlen(password) > 0) ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
     wifi_config.sta.pmf_cfg.capable = true;
     wifi_config.sta.pmf_cfg.required = false;
-    
+
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
-    
-    ESP_LOGI(TAG, "WiFi initialization finished. Connecting to SSID: %s", WIFI_SSID);
+
+    ESP_LOGI(TAG, "WiFi initialization finished. Connecting to SSID: %s", ssid);
     
     wifi_initialized = true;
     return ESP_OK;
@@ -122,10 +127,10 @@ esp_err_t wifi_manager_connect(void)
                                           portMAX_DELAY);
     
     if (bits & WIFI_CONNECTED_BIT) {
-        ESP_LOGI(TAG, "Connected to WiFi SSID: %s", WIFI_SSID);
+        ESP_LOGI(TAG, "Connected to WiFi SSID: %s", g_config.wifi_ssid);
         return ESP_OK;
     } else if (bits & WIFI_FAIL_BIT) {
-        ESP_LOGE(TAG, "Failed to connect to WiFi SSID: %s", WIFI_SSID);
+        ESP_LOGE(TAG, "Failed to connect to WiFi SSID: %s", g_config.wifi_ssid);
         return ESP_FAIL;
     } else {
         ESP_LOGE(TAG, "Unexpected WiFi event");
@@ -234,7 +239,7 @@ void wifi_manager_status_report(void)
     ESP_LOGI(TAG, "=== WiFi Status Report ===");
     ESP_LOGI(TAG, "Initialized: %s", wifi_initialized ? "Yes" : "No");
     ESP_LOGI(TAG, "Connected: %s", wifi_connected ? "Yes" : "No");
-    ESP_LOGI(TAG, "SSID: %s", WIFI_SSID);
+    ESP_LOGI(TAG, "SSID: %s", g_config.wifi_ssid);
     ESP_LOGI(TAG, "Status: %s", wifi_manager_get_status_string());
     
     if (wifi_connected) {

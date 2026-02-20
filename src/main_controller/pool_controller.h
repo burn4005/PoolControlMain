@@ -11,7 +11,7 @@
 #include "freertos/timers.h"
 #include "driver/gpio.h"
 #include "driver/i2c.h"
-#include "driver/adc.h"
+#include "esp_http_client.h"
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
@@ -26,11 +26,7 @@
 #include "time.h"
 
 // Hardware Pin Definitions
-#define PUMP_RELAY_PIN GPIO_NUM_12
-#define CHLORINATOR_RELAY_PIN GPIO_NUM_13
 #define LIGHT_RELAY_PIN GPIO_NUM_14
-#define ACS712_PUMP_PIN ADC1_CHANNEL_0
-#define ACS712_CHLORINATOR_PIN ADC1_CHANNEL_1
 #define I2C_SDA_PIN GPIO_NUM_21
 #define I2C_SCL_PIN GPIO_NUM_22
 #define UART_TX_PIN GPIO_NUM_17
@@ -49,6 +45,34 @@
 #define MIN_PUMP_RUNTIME_MS 120000  // 2 minutes
 #define SENSOR_STABILIZATION_TIME_MS 120000  // 2 minutes
 
+// Chemical Dosing Safety Limits
+#define MIN_BASE_ACID_DOSE_ML 0.5f
+#define MAX_BASE_ACID_DOSE_ML 100.0f
+#define MIN_PH_CORRECTION_ML 5.0f
+#define MAX_PH_CORRECTION_ML 200.0f
+#define MAX_DAILY_ACID_ML 2000.0f           // Maximum acid per 24-hour period
+#define ACID_ADDITION_INTERVAL_DEFAULT_MS 600000   // 10 minutes
+#define PH_CORRECTION_INTERVAL_MS 1800000          // 30 minutes
+#define PH_CORRECTION_PUMP_DELAY_MS 600000         // 10 min after pump start
+#define PH_LEARNING_EVAL_DELAY_MS 7200000          // 2 hours
+#define ORP_LEARNING_EVAL_DELAY_MS 1800000         // 30 minutes
+#define BASE_ACID_LEARNING_INTERVAL_MS 86400000    // 24 hours
+#define PH_ERROR_SCALING_REFERENCE 0.2f            // Scale for 0.2 pH unit error
+#define PH_ERROR_SCALING_MAX 2.0f                  // Cap error scaling at 2x
+
+// Learning System Bounds
+#define PH_LEARNING_GAIN_MIN 5.0f
+#define PH_LEARNING_GAIN_MAX 30.0f   // Tightened from 50%
+#define ORP_LEARNING_GAIN_MIN 5.0f
+#define ORP_LEARNING_GAIN_MAX 30.0f
+#define LEARNING_MAX_CHANGE_PERCENT 0.20f  // Max 20% change per adjustment
+#define LEARNING_EFFECTIVENESS_MIN 0.1f
+#define LEARNING_EFFECTIVENESS_MAX 3.0f
+
+// API Authentication
+#define API_TOKEN_LENGTH 32
+#define API_SESSION_TIMEOUT_S 3600  // 1 hour
+
 // Pump Status Enumeration
 typedef enum {
     PUMP_OFF = 0,
@@ -58,12 +82,27 @@ typedef enum {
     PUMP_ON_BUT_STOPPED = 4
 } pump_status_t;
 
-// Pump Thresholds Structure
+// Shelly 2PM Pro Channel Definitions
+#define SHELLY_CH_PUMP        0
+#define SHELLY_CH_CHLORINATOR 1
+
+// Shelly Channel Status (populated by shelly_control.cpp)
 typedef struct {
-    float stopped_max;      // Maximum current for "stopped" detection
-    float low_speed_min;    // Minimum current for low speed
-    float medium_speed_min; // Minimum current for medium speed
-    float high_speed_min;   // Minimum current for high speed
+    bool output;
+    float apower;
+    float current;
+    float voltage;
+    float temperature;
+    bool valid;
+    uint64_t last_update_ms;
+} shelly_channel_status_t;
+
+// Pump Thresholds Structure (power-based via Shelly)
+typedef struct {
+    float stopped_max_watts;      // Maximum power for "stopped" detection
+    float low_speed_min_watts;    // Minimum power for low speed
+    float medium_speed_min_watts; // Minimum power for medium speed
+    float high_speed_min_watts;   // Minimum power for high speed
 } pump_thresholds_t;
 
 // Light Mode Enumeration
@@ -156,6 +195,11 @@ typedef struct {
     // WiFi Settings
     char wifi_ssid[32];
     char wifi_password[64];
+
+    // Shelly 2PM Pro Settings
+    char shelly_ip[16];
+    char shelly_user[32];
+    char shelly_password[64];
 } system_config_t;
 
 // System State Structure
@@ -166,7 +210,14 @@ typedef struct {
     float orp;
     float pump_current;
     float chlorinator_current;
-    
+    float pump_power_watts;
+    float pump_voltage;
+    float chlorinator_power_watts;
+    float chlorinator_voltage;
+    float shelly_temperature;
+    bool shelly_reachable;
+    bool shelly_alarm_active;
+
     // Equipment Status
     bool pump_relay_on;
     bool chlorinator_relay_on;
@@ -196,6 +247,13 @@ typedef struct {
     uint64_t duty_cycle_start_time;
     uint64_t light_change_time;
     
+    // Safety
+    bool emergency_stop_active;
+
+    // Daily Dosing Tracking
+    float daily_acid_dosed_ml;
+    uint32_t daily_acid_reset_day;  // Day of year for reset tracking
+
     // Alarms
     bool pump_alarm_active;
     bool chlorinator_alarm_active;
@@ -258,10 +316,11 @@ esp_err_t atlas_get_pump_total_volume(float* total_ml);
 esp_err_t atlas_clear_pump_total_volume(void);
 void atlas_maintenance_routine(void);
 
-// Current Sensors
-esp_err_t current_sensors_init(void);
-float read_pump_current(void);
-float read_chlorinator_current(void);
+// Shelly Control
+esp_err_t shelly_control_init(void);
+esp_err_t shelly_queue_switch(uint8_t channel, bool on);
+void shelly_get_cached_state(shelly_channel_status_t *pump_status, shelly_channel_status_t *chlorinator_status, bool *reachable);
+bool shelly_is_reachable(void);
 
 // Pump Control
 void pump_control_init(void);
@@ -332,6 +391,7 @@ esp_err_t system_config_update_ph_settings(float target, float base_amount, floa
 esp_err_t system_config_update_orp_settings(float target, float temp_coeff, float learning_gain, uint32_t interval_ms);
 esp_err_t system_config_update_chlorinator_settings(float duty_cycle, uint32_t period_ms);
 esp_err_t system_config_update_wifi_settings(const char* ssid, const char* password);
+esp_err_t system_config_update_shelly_settings(const char* ip, const char* user, const char* password);
 void system_config_print_current(void);
 
 // NTP Sync
@@ -353,6 +413,10 @@ esp_err_t wifi_manager_reconnect(void);
 void wifi_manager_status_report(void);
 void wifi_manager_maintenance_task(void);
 
+// API Authentication
+bool web_server_verify_auth(httpd_req_t *req);
+esp_err_t web_server_generate_token(const char* password, char* token_out, size_t token_size);
+
 // Utility Functions
 float calculate_temperature_compensated_orp(float water_temp);
 float calculate_time_based_orp_target(int current_hour);
@@ -360,5 +424,7 @@ float calculate_optimal_orp_target(void);
 void log_event(const char* message);
 void raise_alarm(const char* alarm_id, const char* message);
 void clear_alarm(const char* alarm_id);
+void emergency_stop_activate(void);
+void emergency_stop_reset(void);
 
 #endif // POOL_CONTROLLER_H

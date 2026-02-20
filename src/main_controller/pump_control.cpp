@@ -6,24 +6,13 @@ static uint64_t pump_alarm_timer = 0;
 
 void pump_control_init(void)
 {
-    ESP_LOGI(TAG, "Initializing Pump Control...");
-    
-    // Configure pump relay pin
-    gpio_config_t io_conf = {};
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    io_conf.mode = GPIO_MODE_OUTPUT;
-    io_conf.pin_bit_mask = (1ULL << PUMP_RELAY_PIN);
-    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
-    gpio_config(&io_conf);
-    
-    // Initialize pump relay to OFF
-    gpio_set_level(PUMP_RELAY_PIN, 0);
+    ESP_LOGI(TAG, "Initializing Pump Control (Shelly)...");
+
     g_state.pump_relay_on = false;
     g_state.pump_status = PUMP_OFF;
     g_state.pump_healthy = false;
-    
-    ESP_LOGI(TAG, "Pump Control Initialized");
+
+    ESP_LOGI(TAG, "Pump Control Initialized (Shelly mode)");
 }
 
 void update_pump_status(void)
@@ -43,10 +32,10 @@ void update_pump_status(void)
     }
     
     if (new_status != g_state.pump_status) {
-        ESP_LOGI(TAG, "Pump status: %s -> %s (Current: %.2fA)", 
+        ESP_LOGI(TAG, "Pump status: %s -> %s (Power: %.0fW)",
                  get_pump_status_string(g_state.pump_status),
                  get_pump_status_string(new_status),
-                 g_state.pump_current);
+                 g_state.pump_power_watts);
         
         g_state.pump_status = new_status;
         g_state.pump_status_change_time = get_timestamp_ms();
@@ -81,16 +70,16 @@ pump_status_t detect_pump_status(void)
         return PUMP_OFF;
     }
     
-    // Relay is ON, check current against user-configured thresholds
-    float current = g_state.pump_current;
-    
-    if (current <= g_config.pump_thresholds.stopped_max) {
+    // Relay is ON, check power against user-configured watt thresholds
+    float power = g_state.pump_power_watts;
+
+    if (power <= g_config.pump_thresholds.stopped_max_watts) {
         return PUMP_ON_BUT_STOPPED;  // UNHEALTHY STATE
-    } else if (current < g_config.pump_thresholds.low_speed_min) {
+    } else if (power < g_config.pump_thresholds.low_speed_min_watts) {
         return PUMP_ON_BUT_STOPPED;  // Still unhealthy - between stopped and low
-    } else if (current < g_config.pump_thresholds.medium_speed_min) {
+    } else if (power < g_config.pump_thresholds.medium_speed_min_watts) {
         return PUMP_LOW_SPEED;       // HEALTHY STATE
-    } else if (current < g_config.pump_thresholds.high_speed_min) {
+    } else if (power < g_config.pump_thresholds.high_speed_min_watts) {
         return PUMP_MEDIUM_SPEED;    // HEALTHY STATE
     } else {
         return PUMP_HIGH_SPEED;      // HEALTHY STATE
@@ -104,7 +93,7 @@ bool is_pump_healthy(void)
 
 void set_pump_relay(bool state)
 {
-    gpio_set_level(PUMP_RELAY_PIN, state ? 1 : 0);
+    shelly_queue_switch(SHELLY_CH_PUMP, state);
     g_state.pump_relay_on = state;
     
     if (state) {

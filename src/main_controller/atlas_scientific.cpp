@@ -164,16 +164,16 @@ float atlas_read_ph_orp_ph(void)
 {
     char response[16];
     char command[32];
-    
+
     // Set temperature compensation first
     snprintf(command, sizeof(command), ATLAS_CMD_TEMP_COMP, g_state.temperature);
     atlas_send_command(EZO_PH_ORP_ADDR, command, NULL, 0);
     vTaskDelay(pdMS_TO_TICKS(300)); // Short delay for temperature setting
-    
+
     // Read pH value
     if (atlas_send_command(EZO_PH_ORP_ADDR, "R,pH", response, sizeof(response)) == ESP_OK) {
         float ph_value = atof(response);
-        
+
         // Validate pH range (typical range 0-14)
         if (ph_value >= 0.0f && ph_value <= 14.0f) {
             ESP_LOGD(TAG, "pH reading: %.2f", ph_value);
@@ -182,26 +182,28 @@ float atlas_read_ph_orp_ph(void)
             ESP_LOGW(TAG, "Invalid pH reading: %.2f", ph_value);
         }
     } else {
-        ESP_LOGW(TAG, "Failed to read pH value");
+        ESP_LOGE(TAG, "Failed to read pH value");
     }
-    
-    return 7.0f; // Return neutral pH as fallback
+
+    // Signal sensor failure - do NOT return a fake "normal" value
+    g_state.sensors_healthy = false;
+    return NAN;
 }
 
 float atlas_read_ph_orp_orp(void)
 {
     char response[16];
     char command[32];
-    
+
     // Set temperature compensation first
     snprintf(command, sizeof(command), ATLAS_CMD_TEMP_COMP, g_state.temperature);
     atlas_send_command(EZO_PH_ORP_ADDR, command, NULL, 0);
     vTaskDelay(pdMS_TO_TICKS(300)); // Short delay for temperature setting
-    
+
     // Read ORP value
     if (atlas_send_command(EZO_PH_ORP_ADDR, "R,ORP", response, sizeof(response)) == ESP_OK) {
         float orp_value = atof(response);
-        
+
         // Validate ORP range (typical range -1000 to +1000 mV)
         if (orp_value >= -1000.0f && orp_value <= 1000.0f) {
             ESP_LOGD(TAG, "ORP reading: %.1f mV", orp_value);
@@ -210,20 +212,22 @@ float atlas_read_ph_orp_orp(void)
             ESP_LOGW(TAG, "Invalid ORP reading: %.1f", orp_value);
         }
     } else {
-        ESP_LOGW(TAG, "Failed to read ORP value");
+        ESP_LOGE(TAG, "Failed to read ORP value");
     }
-    
-    return 700.0f; // Return typical pool ORP as fallback
+
+    // Signal sensor failure - do NOT return a fake "normal" value
+    g_state.sensors_healthy = false;
+    return NAN;
 }
 
 float atlas_read_temperature(void)
 {
     char response[16];
-    
+
     if (atlas_send_command(EZO_RTD_ADDR, ATLAS_CMD_READ, response, sizeof(response)) == ESP_OK) {
         float temp_value = atof(response);
-        
-        // Validate temperature range (typical pool range 10-40°C)
+
+        // Validate temperature range (typical pool range 5-50°C)
         if (temp_value >= 5.0f && temp_value <= 50.0f) {
             ESP_LOGD(TAG, "Temperature reading: %.1f°C", temp_value);
             return temp_value;
@@ -231,10 +235,12 @@ float atlas_read_temperature(void)
             ESP_LOGW(TAG, "Invalid temperature reading: %.1f", temp_value);
         }
     } else {
-        ESP_LOGW(TAG, "Failed to read temperature");
+        ESP_LOGE(TAG, "Failed to read temperature");
     }
-    
-    return 25.0f; // Return typical pool temperature as fallback
+
+    // Signal sensor failure - do NOT return a fake "normal" value
+    g_state.sensors_healthy = false;
+    return NAN;
 }
 
 esp_err_t atlas_dose_acid(float volume_ml)
@@ -255,14 +261,7 @@ esp_err_t atlas_dose_acid(float volume_ml)
     esp_err_t ret = atlas_send_command(EZO_PMP_ADDR, command, response, sizeof(response));
     
     if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "Acid dosing started: %s", response);
-        
-        // Calculate estimated dosing time (assuming 1ml/second rate)
-        uint32_t dose_time_ms = (uint32_t)(volume_ml * 1000);
-        
-        // Log completion time
-        ESP_LOGI(TAG, "Estimated dosing time: %.1f seconds", volume_ml);
-        
+        ESP_LOGI(TAG, "Acid dosing started: %s (estimated %.1f seconds)", response, volume_ml);
         return ESP_OK;
     } else {
         ESP_LOGE(TAG, "Failed to start acid dosing");

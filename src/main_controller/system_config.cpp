@@ -52,13 +52,13 @@ void system_config_set_defaults(void)
     g_config.duty_cycle_period_ms = 600000; // 10 minutes
     g_config.acid_addition_interval_ms = 3600000; // 60 minutes
     
-    // Pump Current Thresholds (User Configurable)
-    g_config.pump_thresholds.stopped_max = 0.5f;
-    g_config.pump_thresholds.low_speed_min = 2.0f;
-    g_config.pump_thresholds.medium_speed_min = 4.0f;
-    g_config.pump_thresholds.high_speed_min = 6.0f;
-    
-    // Current Monitoring Setpoints
+    // Pump Power Thresholds (Watts, from Shelly 2PM Pro)
+    g_config.pump_thresholds.stopped_max_watts = 50.0f;       // <50W = stopped
+    g_config.pump_thresholds.low_speed_min_watts = 200.0f;    // Viron low speed
+    g_config.pump_thresholds.medium_speed_min_watts = 500.0f;  // Viron medium speed
+    g_config.pump_thresholds.high_speed_min_watts = 900.0f;    // Viron high speed
+
+    // Chlorinator Current Monitoring Setpoints (amps from Shelly)
     g_config.chlorinator_min_current = 0.3f;
     g_config.chlorinator_max_current = 0.8f;
     
@@ -70,7 +70,12 @@ void system_config_set_defaults(void)
     // WiFi Settings (empty by default)
     strcpy(g_config.wifi_ssid, "");
     strcpy(g_config.wifi_password, "");
-    
+
+    // Shelly 2PM Pro Settings (empty by default - must configure via web)
+    strcpy(g_config.shelly_ip, "");
+    strcpy(g_config.shelly_user, "");
+    strcpy(g_config.shelly_password, "");
+
     ESP_LOGI(TAG, "Default configuration set - All setpoints initialized");
 }
 
@@ -170,14 +175,14 @@ esp_err_t system_config_reset_to_defaults(void)
 
 esp_err_t system_config_update_pump_thresholds(float stopped_max, float low_min, float medium_min, float high_min)
 {
-    g_config.pump_thresholds.stopped_max = stopped_max;
-    g_config.pump_thresholds.low_speed_min = low_min;
-    g_config.pump_thresholds.medium_speed_min = medium_min;
-    g_config.pump_thresholds.high_speed_min = high_min;
-    
-    ESP_LOGI(TAG, "Pump thresholds updated: stopped=%.1fA, low=%.1fA, medium=%.1fA, high=%.1fA",
+    g_config.pump_thresholds.stopped_max_watts = stopped_max;
+    g_config.pump_thresholds.low_speed_min_watts = low_min;
+    g_config.pump_thresholds.medium_speed_min_watts = medium_min;
+    g_config.pump_thresholds.high_speed_min_watts = high_min;
+
+    ESP_LOGI(TAG, "Pump thresholds updated: stopped=%.0fW, low=%.0fW, medium=%.0fW, high=%.0fW",
              stopped_max, low_min, medium_min, high_min);
-    
+
     return system_config_save();
 }
 
@@ -230,7 +235,22 @@ esp_err_t system_config_update_wifi_settings(const char* ssid, const char* passw
     g_config.wifi_password[sizeof(g_config.wifi_password) - 1] = '\0';
     
     ESP_LOGI(TAG, "WiFi settings updated: SSID=%s", ssid);
-    
+
+    return system_config_save();
+}
+
+esp_err_t system_config_update_shelly_settings(const char* ip, const char* user, const char* password)
+{
+    strncpy(g_config.shelly_ip, ip, sizeof(g_config.shelly_ip) - 1);
+    g_config.shelly_ip[sizeof(g_config.shelly_ip) - 1] = '\0';
+
+    strncpy(g_config.shelly_user, user, sizeof(g_config.shelly_user) - 1);
+    g_config.shelly_user[sizeof(g_config.shelly_user) - 1] = '\0';
+
+    strncpy(g_config.shelly_password, password, sizeof(g_config.shelly_password) - 1);
+    g_config.shelly_password[sizeof(g_config.shelly_password) - 1] = '\0';
+
+    ESP_LOGI(TAG, "Shelly settings updated: IP=%s, User=%s", ip, user);
     return system_config_save();
 }
 
@@ -462,11 +482,12 @@ void system_config_print_current(void)
     ESP_LOGI(TAG, "  pH Target: %.2f", g_config.ph_target);
     ESP_LOGI(TAG, "  ORP Target: %.0fmV", g_config.base_orp_target);
     ESP_LOGI(TAG, "  Chlorinator Duty: %.1f%%", g_config.chlorinator_duty_cycle);
-    ESP_LOGI(TAG, "  Pump Thresholds: %.1f/%.1f/%.1f/%.1fA", 
-             g_config.pump_thresholds.stopped_max,
-             g_config.pump_thresholds.low_speed_min,
-             g_config.pump_thresholds.medium_speed_min,
-             g_config.pump_thresholds.high_speed_min);
+    ESP_LOGI(TAG, "  Pump Thresholds: %.0f/%.0f/%.0f/%.0fW",
+             g_config.pump_thresholds.stopped_max_watts,
+             g_config.pump_thresholds.low_speed_min_watts,
+             g_config.pump_thresholds.medium_speed_min_watts,
+             g_config.pump_thresholds.high_speed_min_watts);
+    ESP_LOGI(TAG, "  Shelly IP: %s", g_config.shelly_ip[0] ? g_config.shelly_ip : "(not configured)");
     ESP_LOGI(TAG, "Runtime State:");
     ESP_LOGI(TAG, "  Acid Remaining: %.1fml", g_state.acid_remaining_ml);
     ESP_LOGI(TAG, "  Chlorinator Runtime: %.1fh", g_state.chlorinator_runtime_hours);

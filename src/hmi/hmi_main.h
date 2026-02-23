@@ -23,19 +23,19 @@
 #define LCD_PIXEL_CLOCK_HZ  (20 * 1000 * 1000)
 #define LCD_BK_LIGHT_ON_LEVEL  1
 #define LCD_BK_LIGHT_OFF_LEVEL !LCD_BK_LIGHT_ON_LEVEL
-#define PIN_NUM_MOSI        11
-#define PIN_NUM_CLK         12
-#define PIN_NUM_CS          10
-#define PIN_NUM_DC          13
-#define PIN_NUM_RST         14
-#define PIN_NUM_BK_LIGHT    15
+#define PIN_NUM_MOSI        GPIO_NUM_11
+#define PIN_NUM_CLK         GPIO_NUM_12
+#define PIN_NUM_CS          GPIO_NUM_10
+#define PIN_NUM_DC          GPIO_NUM_13
+#define PIN_NUM_RST         GPIO_NUM_14
+#define PIN_NUM_BK_LIGHT    GPIO_NUM_15
 
 // Touch Configuration
 #define TOUCH_HOST          SPI3_HOST
-#define PIN_NUM_TOUCH_MOSI  6
-#define PIN_NUM_TOUCH_CLK   7
-#define PIN_NUM_TOUCH_CS    5
-#define PIN_NUM_TOUCH_INT   4
+#define PIN_NUM_TOUCH_MOSI  GPIO_NUM_6
+#define PIN_NUM_TOUCH_CLK   GPIO_NUM_7
+#define PIN_NUM_TOUCH_CS    GPIO_NUM_5
+#define PIN_NUM_TOUCH_INT   GPIO_NUM_4
 
 // UART Configuration for Main Controller Communication
 #define UART_PORT_NUM       UART_NUM_1

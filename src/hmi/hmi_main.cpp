@@ -4,21 +4,16 @@ static const char *TAG = "HMI_MAIN";
 
 // LVGL display buffer
 static lv_disp_draw_buf_t disp_buf;
-static lv_color_t buf_1[LCD_H_RES * 100];
-static lv_color_t buf_2[LCD_H_RES * 100];
+static lv_color_t buf_1[LCD_H_RES * 20];
+static lv_color_t buf_2[LCD_H_RES * 20];
 
 // LVGL input device
 static lv_indev_t *indev_touchpad;
 
 // LCD and touch handles
 static esp_lcd_panel_handle_t panel_handle = NULL;
-static esp_timer_handle_t lvgl_tick_timer = NULL;
 
-// LVGL tick timer callback
-static void increase_lvgl_tick(void *arg)
-{
-    lv_tick_inc(LVGL_TICK_PERIOD_MS);
-}
+// LVGL tick is handled automatically via LV_TICK_CUSTOM (esp_timer_get_time)
 
 // LVGL flush callback
 static bool notify_lvgl_flush_ready(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_io_event_data_t *edata, void *user_ctx)
@@ -59,15 +54,15 @@ void hmi_init(void)
     ESP_LOGI(TAG, "Install panel IO");
     esp_lcd_panel_io_handle_t io_handle = NULL;
     esp_lcd_panel_io_spi_config_t io_config = {
-        .dc_gpio_num = PIN_NUM_DC,
         .cs_gpio_num = PIN_NUM_CS,
-        .pclk_hz = LCD_PIXEL_CLOCK_HZ,
-        .lcd_cmd_bits = 8,
-        .lcd_param_bits = 8,
+        .dc_gpio_num = PIN_NUM_DC,
         .spi_mode = 0,
+        .pclk_hz = LCD_PIXEL_CLOCK_HZ,
         .trans_queue_depth = 10,
         .on_color_trans_done = notify_lvgl_flush_ready,
         .user_ctx = NULL, // Will be set later
+        .lcd_cmd_bits = 8,
+        .lcd_param_bits = 8,
     };
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)LCD_HOST, &io_config, &io_handle));
     
@@ -77,7 +72,7 @@ void hmi_init(void)
         .rgb_endian = LCD_RGB_ENDIAN_BGR,
         .bits_per_pixel = 16,
     };
-    ESP_ERROR_CHECK(esp_lcd_new_panel_st7796(io_handle, &panel_config, &panel_handle));
+    ESP_ERROR_CHECK(esp_lcd_new_panel_st7789(io_handle, &panel_config, &panel_handle));
     
     ESP_ERROR_CHECK(esp_lcd_panel_reset(panel_handle));
     ESP_ERROR_CHECK(esp_lcd_panel_init(panel_handle));
@@ -87,8 +82,8 @@ void hmi_init(void)
     
     // Configure backlight
     gpio_config_t bk_gpio_config = {
+        .pin_bit_mask = 1ULL << PIN_NUM_BK_LIGHT,
         .mode = GPIO_MODE_OUTPUT,
-        .pin_bit_mask = 1ULL << PIN_NUM_BK_LIGHT
     };
     ESP_ERROR_CHECK(gpio_config(&bk_gpio_config));
     gpio_set_level(PIN_NUM_BK_LIGHT, LCD_BK_LIGHT_ON_LEVEL);
@@ -98,7 +93,7 @@ void hmi_init(void)
     lv_init();
     
     // Allocate draw buffers
-    lv_disp_draw_buf_init(&disp_buf, buf_1, buf_2, LCD_H_RES * 100);
+    lv_disp_draw_buf_init(&disp_buf, buf_1, buf_2, LCD_H_RES * 20);
     
     ESP_LOGI(TAG, "Register display driver to LVGL");
     lv_disp_drv_t disp_drv;
@@ -112,14 +107,6 @@ void hmi_init(void)
     
     // Update the IO config with the display driver
     io_config.user_ctx = &disp_drv;
-    
-    ESP_LOGI(TAG, "Install LVGL tick timer");
-    const esp_timer_create_args_t lvgl_tick_timer_args = {
-        .callback = &increase_lvgl_tick,
-        .name = "lvgl_tick"
-    };
-    ESP_ERROR_CHECK(esp_timer_create(&lvgl_tick_timer_args, &lvgl_tick_timer));
-    ESP_ERROR_CHECK(esp_timer_start_periodic(lvgl_tick_timer, LVGL_TICK_PERIOD_MS * 1000));
     
     // Initialize touch
     touch_handler_init();

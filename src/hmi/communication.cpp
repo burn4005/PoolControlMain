@@ -3,6 +3,12 @@
 
 static const char *TAG = "COMMUNICATION";
 
+// Forward declarations
+static void process_received_data(const char* json_string);
+static void parse_system_data(cJSON *json);
+static void parse_command_acknowledgment(cJSON *json);
+static void parse_alarm_data(cJSON *json);
+
 // UART buffer
 static char uart_buffer[UART_BUF_SIZE];
 static int uart_buffer_pos = 0;
@@ -92,7 +98,7 @@ void communication_task(void *pvParameters)
     }
 }
 
-void process_received_data(const char* json_string)
+static void process_received_data(const char* json_string)
 {
     ESP_LOGD(TAG, "Received: %s", json_string);
     
@@ -117,7 +123,7 @@ void process_received_data(const char* json_string)
     cJSON_Delete(json);
 }
 
-void parse_system_data(cJSON *json)
+static void parse_system_data(cJSON *json)
 {
     // Parse sensor readings
     cJSON *data = cJSON_GetObjectItem(json, "data");
@@ -223,7 +229,7 @@ void parse_system_data(cJSON *json)
     ESP_LOGD(TAG, "System data updated");
 }
 
-void parse_command_acknowledgment(cJSON *json)
+static void parse_command_acknowledgment(cJSON *json)
 {
     cJSON *command = cJSON_GetObjectItem(json, "command");
     cJSON *status = cJSON_GetObjectItem(json, "status");
@@ -233,7 +239,7 @@ void parse_command_acknowledgment(cJSON *json)
     }
 }
 
-void parse_alarm_data(cJSON *json)
+static void parse_alarm_data(cJSON *json)
 {
     cJSON *alarm_id = cJSON_GetObjectItem(json, "alarm_id");
     cJSON *message = cJSON_GetObjectItem(json, "message");

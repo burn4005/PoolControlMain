@@ -1,0 +1,243 @@
+HMI Redesign for Waveshare ESP32-S3-Touch-LCD-7
+Context
+The HMI project currently uses SPI-based LCD (ST7789) and a placeholder touch handler, but the actual hardware is a Waveshare ESP32-S3-Touch-LCD-7 with:
+
+RGB parallel display (ST7262, 800x480, 16-bit)
+GT911 capacitive touch (I2C)
+CH422G I/O expander (backlight on EXIO2, touch reset on EXIO1)
+8MB Octal PSRAM for framebuffers
+RS485 on GPIO15(TX)/GPIO16(RX)
+The user wants: optimized touch controls, trend charts for measured values (24h + 7d), and a premium dark-themed interface.
+
+Phase 1: Hardware Foundation
+1.1 Add ESP-IDF Components
+Add esp_lcd_touch_gt911 dependency via idf_component.yml
+1.2 Create CH422G I/O Expander Driver
+New file: src/hmi/ch422g.h and src/hmi/ch422g.cpp
+
+I2C address: 0x24
+Functions: ch422g_init(), ch422g_set_pin(pin, level)
+Used for: backlight control (EXIO2), touch reset (EXIO1)
+1.3 Rewrite src/hmi/hmi_main.h
+Replace SPI LCD pin defines with RGB parallel pins:
+Data: D0=GPIO14, D1=GPIO38, D2=GPIO18, D3=GPIO17, D4=GPIO10, D5=GPIO39, D6=GPIO0, D7=GPIO45, D8=GPIO48, D9=GPIO47, D10=GPIO21, D11=GPIO1, D12=GPIO2, D13=GPIO42, D14=GPIO41, D15=GPIO40
+Control: HSYNC=GPIO46, VSYNC=GPIO3, DE=GPIO5, PCLK=GPIO7
+I2C: SDA=GPIO8, SCL=GPIO9, Touch INT=GPIO4
+RS485: TX=GPIO15, RX=GPIO16
+Add trend data structures (circular buffer types)
+Add new screen IDs if needed
+1.4 Rewrite src/hmi/hmi_main.cpp - LCD Init
+Remove all SPI LCD code
+Initialize I2C bus for touch + CH422G
+Initialize CH422G, set backlight ON, release touch reset
+Create RGB panel with esp_lcd_new_rgb_panel():
+PCLK: 12.9 MHz
+H/V timing: back_porch=4, front_porch=4, pulse_width=2, active 800x480
+Allocate LVGL framebuffers in PSRAM (800x480x2 bytes, double-buffered)
+Register LVGL display driver
+1.5 Rewrite src/hmi/touch_handler.cpp
+Initialize GT911 via esp_lcd_touch_new_i2c_gt911()
+Implement touch_handler_read() callback reading from GT911
+Support multi-touch (GT911 supports up to 5 points, use first)
+1.6 Update src/hmi/lv_conf.h
+LV_COLOR_16_SWAP = 0 (RGB panel, no swap needed)
+LV_MEM_SIZE = 128*1024 (more headroom for charts/trends)
+Enable LV_FONT_MONTSERRAT_14, _20, _28, _36 (larger fonts for 7" display)
+Ensure LV_USE_CHART = 1
+1.7 Update platformio.ini (hmi env)
+Add PSRAM board settings:
+
+board_build.arduino.memory_type = qio_opi
+board_upload.flash_size = 16MB
+Add idf_component.yml or lib_deps for gt911
+1.8 Update src/CMakeLists.txt
+Add ch422g source files to HMI build
+Phase 2: Data Infrastructure
+2.1 Create Trend Data Module
+New file: src/hmi/trend_data.h and src/hmi/trend_data.cpp
+
+Circular buffer in PSRAM for pH, ORP, temperature
+Two resolutions: 1-minute samples (24h = 1440 points), 15-minute samples (7d = 672 points)
+Functions: trend_data_init(), trend_data_add_sample(), trend_data_get_series()
+Auto-downsample from 1-min to 15-min for 7-day view
+Called from communication.cpp when new system_data arrives
+2.2 Update src/hmi/communication.cpp
+Change UART pins to RS485 (GPIO15/16)
+Call trend_data_add_sample() after parsing system_data
+Add timestamp tracking for sample intervals
+Phase 3: UI Theme & Screen Redesign
+3.1 Create Theme Module
+New file: src/hmi/theme_pool.h and src/hmi/theme_pool.cpp
+
+Dark theme color palette:
+Background: #1A1A2E (deep navy)
+Cards: #16213E (dark blue-gray)
+Primary accent: #0F9BF2 (pool blue)
+Success: #00E676, Warning: #FFD600, Danger: #FF1744
+Text primary: #E0E0E0, Text secondary: #9E9E9E
+Reusable styled components: cards, buttons, gauges, status indicators
+Minimum touch target: 48x48px (recommended 56x56 for pool-side use)
+Apply theme globally via lv_theme_set_act()
+3.2 Create UI Components Module
+New file: src/hmi/ui_components.h and src/hmi/ui_components.cpp
+
+Replace existing helpers in hmi_main.cpp (create_status_card, etc.)
+ui_create_arc_gauge() - arc meter with value label (for pH, ORP, temp)
+ui_create_nav_bar() - bottom tab navigation (shared across screens)
+ui_create_trend_chart() - LVGL chart wrapper with 24h/7d toggle
+ui_create_toggle_card() - equipment on/off card with status LED
+ui_create_confirm_dialog() - modal confirmation for dangerous actions
+3.3 Redesign src/hmi/screen_dashboard.cpp
+Dark theme background
+Top row: 3 arc gauges (pH, ORP, Temperature) with color-coded ranges
+Middle row: Equipment status cards (Pump, Chlorinator, Lights) with LED indicators
+Bottom: Mini sparkline charts (last 2h trend preview)
+Alarm banner at top if any alarm active
+Bottom navigation bar (shared)
+3.4 Update src/hmi/screen_lighting.cpp
+Dark theme
+Larger color buttons (minimum 80x80px) for touch-friendly operation
+Visual preview: colored circle showing selected color
+Current mode highlighted with glow effect
+Bottom navigation bar
+3.5 Redesign src/hmi/screen_manual.cpp
+Large toggle cards for each equipment (Pump, Chlorinator, Lights)
+Pump speed selector (OFF / LOW / MED / HIGH) with visual indicator
+Acid dose: slider or +/- buttons (5ml, 10ml, 25ml presets)
+Confirmation dialog before any manual action
+Bottom navigation bar
+3.6 Implement src/hmi/screen_settings.cpp (currently placeholder)
+pH target adjustment (slider: 7.0-7.8, step 0.1)
+ORP target adjustment (slider: 600-800mV, step 10)
+Chlorinator duty cycle (slider: 0-100%)
+Pool volume display
+HCl concentration display
+All changes require confirmation before sending
+3.7 Implement src/hmi/screen_alarms.cpp (currently placeholder)
+List of current alarms with severity icons (warning/critical)
+Alarm history (scrollable list)
+Acknowledge button for each alarm
+Color-coded: red=active, yellow=acknowledged, green=cleared
+3.8 Implement src/hmi/screen_data.cpp (currently placeholder)
+Full-screen LVGL charts for pH, ORP, Temperature
+Tab selector: pH | ORP | Temp
+Time range toggle: 24h | 7d
+Y-axis auto-scaling with target line overlay
+Touch to see value at point (crosshair)
+3.9 Update src/hmi/screen_calibration.cpp and screen_sensor_calibration.cpp
+Apply dark theme
+Larger touch targets
+Step-by-step wizard with progress indicator
+3.10 Update src/hmi/gui_manager.cpp
+Enable all screens (remove TODOs)
+Add screen transition animations (slide left/right)
+Implement shared bottom navigation bar callbacks
+Phase 4: Safety & Polish
+4.1 Emergency Stop
+Persistent red emergency stop button (floating, visible on all screens)
+Confirmation dialog: "Stop all equipment and chemical dosing?"
+Sends emergency_stop command via UART
+Visual feedback: screen border flashes red
+4.2 Data Staleness Indicator
+If no data received for >30 seconds, show "CONNECTION LOST" banner
+Gray out values that haven't been updated
+Auto-reconnect indication
+4.3 Touch Feedback
+Button press animation (scale down slightly)
+Haptic-style visual feedback (brief color flash)
+Files Summary
+File	Action	Description
+src/hmi/ch422g.h	NEW	CH422G I/O expander header
+src/hmi/ch422g.cpp	NEW	CH422G I2C driver
+src/hmi/trend_data.h	NEW	Trend data circular buffer header
+src/hmi/trend_data.cpp	NEW	Trend data storage & retrieval
+src/hmi/theme_pool.h	NEW	Dark theme definitions header
+src/hmi/theme_pool.cpp	NEW	Theme and style setup
+src/hmi/ui_components.h	NEW	Reusable UI widget header
+src/hmi/ui_components.cpp	NEW	Arc gauges, nav bar, charts, dialogs
+src/hmi/hmi_main.h	REWRITE	New pin defs, new structs
+src/hmi/hmi_main.cpp	REWRITE	RGB panel + I2C init
+src/hmi/touch_handler.cpp	REWRITE	GT911 I2C touch driver
+src/hmi/lv_conf.h	MODIFY	PSRAM, fonts, color swap
+src/hmi/communication.cpp	MODIFY	RS485 pins, trend sampling
+src/hmi/gui_manager.cpp	MODIFY	Enable all screens, nav bar
+src/hmi/screen_dashboard.cpp	REWRITE	Dark theme, arc gauges, sparklines
+src/hmi/screen_lighting.cpp	MODIFY	Dark theme, larger buttons
+src/hmi/screen_manual.cpp	REWRITE	Toggles, confirmations, dose selector
+src/hmi/screen_settings.cpp	REWRITE	Full implementation with sliders
+src/hmi/screen_alarms.cpp	REWRITE	Alarm list with history
+src/hmi/screen_data.cpp	REWRITE	Trend charts with 24h/7d views
+src/hmi/screen_calibration.cpp	MODIFY	Dark theme, larger targets
+src/hmi/screen_sensor_calibration.cpp	MODIFY	Dark theme, larger targets
+platformio.ini	MODIFY	PSRAM config, gt911 dependency
+src/CMakeLists.txt	MODIFY	Include new source files
+Verification
+Build: pio run -e hmi compiles without errors
+Flash to Waveshare board and verify:
+Display initializes (dark theme visible)
+Touch responds to taps on all buttons
+UART communication receives data from main controller
+Dashboard shows live sensor values
+Trend charts populate over time
+All screen navigation works
+Emergency stop sends command
+Confirmation dialogs appear for manual operations
+User approved the plan
+Plan approved. Let me set up the todo list and begin implementation.
+
+Update Todos
+
+Phase 1.1-1.2: Create CH422G I/O expander driver (ch422g.h, ch422g.cpp)
+
+Phase 1.3: Rewrite hmi_main.h with RGB panel pins and updated structs
+
+Phase 1.4: Rewrite hmi_main.cpp with RGB panel and I2C init
+
+Phase 1.5: Rewrite touch_handler.cpp with GT911 driver
+
+Phase 1.6-1.8: Update lv_conf.h, platformio.ini, CMakeLists.txt
+
+Phase 2: Create trend_data module and update communication.cpp
+
+Phase 3.1-3.2: Create theme_pool and ui_components modules
+
+Phase 3.3: Redesign screen_dashboard.cpp
+
+Phase 3.4-3.5: Update screen_lighting.cpp and redesign screen_manual.cpp
+
+Phase 3.6-3.8: Implement settings, alarms, and data screens
+
+Phase 3.9-3.10: Update calibration screens and gui_manager.cpp
+
+Phase 4: Emergency stop, staleness indicator, touch feedback
+
+Build and fix compilation errors
+Let me start with Phase 1. First, I need to read the existing files that will be modified, then create the new ones.
+
+Update Todos
+
+Phase 1.1-1.2: Create CH422G I/O expander driver (ch422g.h, ch422g.cpp)
+
+Phase 1.3: Rewrite hmi_main.h with RGB panel pins and updated structs
+
+Phase 1.4: Rewrite hmi_main.cpp with RGB panel and I2C init
+
+Phase 1.5: Rewrite touch_handler.cpp with GT911 driver
+
+Phase 1.6-1.8: Update lv_conf.h, platformio.ini, CMakeLists.txt
+
+Phase 2: Create trend_data module and update communication.cpp
+
+Phase 3.1-3.2: Create theme_pool and ui_components modules
+
+Phase 3.3: Redesign screen_dashboard.cpp
+
+Phase 3.4-3.5: Update screen_lighting.cpp and redesign screen_manual.cpp
+
+Phase 3.6-3.8: Implement settings, alarms, and data screens
+
+Phase 3.9-3.10: Update calibration screens and gui_manager.cpp
+
+Phase 4: Emergency stop, staleness indicator, touch feedback
+
+Build and fix compilation errors

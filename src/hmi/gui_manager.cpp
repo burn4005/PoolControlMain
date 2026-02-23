@@ -6,6 +6,10 @@ static const char *TAG = "GUI_MANAGER";
 static screen_id_t current_screen = SCREEN_DASHBOARD;
 static lv_obj_t *screens[SCREEN_COUNT] = {NULL};
 
+// Defined in screen files
+extern lv_obj_t* get_dashboard_screen(void);
+extern lv_obj_t* get_lighting_screen(void);
+
 void gui_manager_init(void)
 {
     ESP_LOGI(TAG, "Initializing GUI Manager...");
@@ -101,27 +105,4 @@ void gui_manager_update_data(void)
     }
 }
 
-// Placeholder functions for screens not yet implemented
-lv_obj_t* get_lighting_screen(void)
-{
-    extern lv_obj_t* lighting_screen;
-    return lighting_screen;
-}
-
-lv_obj_t* get_dashboard_screen(void)
-{
-    extern lv_obj_t* dashboard_screen;
-    return dashboard_screen;
-}
-
-// Screen creation stubs for unimplemented screens
-void screen_manual_create(void) { /* TODO */ }
-void screen_manual_update(void) { /* TODO */ }
-void screen_settings_create(void) { /* TODO */ }
-void screen_settings_update(void) { /* TODO */ }
-void screen_alarms_create(void) { /* TODO */ }
-void screen_alarms_update(void) { /* TODO */ }
-void screen_calibration_create(void) { /* TODO */ }
-void screen_calibration_update(void) { /* TODO */ }
-void screen_data_create(void) { /* TODO */ }
-void screen_data_update(void) { /* TODO */ }
+// Screen create/update functions are defined in their respective screen_*.cpp files

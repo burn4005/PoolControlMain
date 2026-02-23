@@ -1,10 +1,7 @@
 # Component CMakeLists.txt for Pool Controller project
 
-# Get compile definitions to check which environment we're building for
-get_directory_property(COMPILE_DEFS COMPILE_DEFINITIONS)
-
-# Check for HMI_CONTROLLER first (more specific check)
-if("HMI_CONTROLLER" IN_LIST COMPILE_DEFS)
+# HMI_CONTROLLER is passed as a CMake variable via board_build.cmake_extra_args
+if(HMI_CONTROLLER)
     # HMI Controller build - use HMI files
     FILE(GLOB_RECURSE COMPONENT_SRCS
         ${CMAKE_CURRENT_SOURCE_DIR}/hmi/*.cpp

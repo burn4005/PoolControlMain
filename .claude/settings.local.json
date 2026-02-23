@@ -2,7 +2,15 @@
   "permissions": {
     "allow": [
       "Bash(grep:*)",
-      "WebFetch(domain:shelly-api-docs.shelly.cloud)"
+      "WebFetch(domain:shelly-api-docs.shelly.cloud)",
+      "Bash(\"C:/Users/adbur/.platformio/penv/Scripts/pio.exe\" run -e main_controller)",
+      "Bash(\"C:/Users/adbur/.platformio/penv/Scripts/pio.exe\" run -e hmi)",
+      "Bash(\"C:/Users/adbur/.platformio/penv/Scripts/pio.exe\" run -e hmi -v)",
+      "Bash(\"C:/Users/adbur/.platformio/penv/Scripts/pio.exe\" run:*)",
+      "WebFetch(domain:files.waveshare.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:www.haraldkreuzer.net)"
     ],
     "deny": []
   }

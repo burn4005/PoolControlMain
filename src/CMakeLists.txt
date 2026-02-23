@@ -29,4 +29,5 @@ endif()
 # Register component with required ESP-IDF dependencies
 idf_component_register(SRCS ${COMPONENT_SRCS}
                       INCLUDE_DIRS ${COMPONENT_ADD_INCLUDEDIRS}
-                      REQUIRES json esp_http_client esp_http_server nvs_flash esp_wifi esp_event esp_netif driver esp_timer)
+                      REQUIRES json esp_http_client esp_http_server nvs_flash esp_wifi esp_event esp_netif driver esp_timer esp_lcd)
+

@@ -1,11 +1,15 @@
 #include "hmi_main.h"
+#include "nvs_flash.h"
 
 static const char *TAG = "HMI_MAIN";
 
 // Global variables
 system_data_t g_system_data;
+system_data_t g_system_data_view;
 lv_disp_t *g_disp = NULL;
 bool g_data_updated = false;
+uint64_t g_last_data_rx_ms = 0;
+SemaphoreHandle_t g_system_data_mutex = NULL;
 
 extern "C" void app_main(void)
 {

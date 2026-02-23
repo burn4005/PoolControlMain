@@ -12,9 +12,6 @@
 static const char *TAG = "WEB_SERVER";
 static httpd_handle_t server = NULL;
 
-// WebSocket connection tracking
-static int ws_fd = -1;
-
 // --- Authentication ---
 static char api_token[API_TOKEN_LENGTH + 1] = {0};
 static uint64_t token_last_access = 0;
@@ -31,13 +28,8 @@ static void generate_random_token(char *buf, size_t len)
 
 bool web_server_verify_auth(httpd_req_t *req)
 {
-    // Status endpoint is read-only, allow without auth
-    // All mutating endpoints require a valid token
-
     if (api_token[0] == '\0') {
-        // No token set yet - auth not configured, allow access
-        // This enables initial setup before password is configured
-        return true;
+        return false;
     }
 
     char auth_header[128] = {0};
@@ -836,7 +828,7 @@ static esp_err_t api_emergency_reset_handler(httpd_req_t *req)
 esp_err_t web_server_init(void)
 {
     ESP_LOGI(TAG, "Initializing Web Server...");
-    // Auth token starts empty - no auth enforced until first login
+    // Auth token starts empty and all protected endpoints require login first.
     api_token[0] = '\0';
     return ESP_OK;
 }

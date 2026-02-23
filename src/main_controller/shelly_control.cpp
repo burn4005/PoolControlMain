@@ -37,7 +37,7 @@ typedef struct {
 
 static QueueHandle_t shelly_cmd_queue = NULL;
 static SemaphoreHandle_t shelly_state_mutex = NULL;
-static shelly_state_t shelly_state = {0};
+static shelly_state_t shelly_state = {};
 static TaskHandle_t shelly_task_handle = NULL;
 
 // HTTP response handling
@@ -71,11 +71,10 @@ static esp_err_t shelly_http_get(const char *rpc_path, char *response_buf, size_
     char url[SHELLY_URL_BUF_SIZE];
     snprintf(url, sizeof(url), "http://%s/rpc/%s", g_config.shelly_ip, rpc_path);
 
-    http_response_t resp = {
-        .buffer = response_buf,
-        .buffer_len = (int)buf_size,
-        .data_len = 0,
-    };
+    http_response_t resp = {};
+    resp.buffer = response_buf;
+    resp.buffer_len = (int)buf_size;
+    resp.data_len = 0;
     response_buf[0] = '\0';
 
     esp_http_client_config_t config = {};
@@ -186,7 +185,7 @@ static void shelly_task(void *pvParameters)
                 if (ret == ESP_OK) {
                     // Brief delay then poll status to confirm
                     vTaskDelay(pdMS_TO_TICKS(500));
-                    shelly_channel_status_t ch_status = {0};
+                    shelly_channel_status_t ch_status = {};
                     if (shelly_get_channel_status(cmd.channel, &ch_status) == ESP_OK) {
                         xSemaphoreTake(shelly_state_mutex, portMAX_DELAY);
                         shelly_state.channels[cmd.channel] = ch_status;
@@ -212,7 +211,7 @@ static void shelly_task(void *pvParameters)
 
             bool poll_ok = true;
             for (int ch = 0; ch < 2; ch++) {
-                shelly_channel_status_t ch_status = {0};
+                shelly_channel_status_t ch_status = {};
                 if (shelly_get_channel_status(ch, &ch_status) == ESP_OK) {
                     xSemaphoreTake(shelly_state_mutex, portMAX_DELAY);
                     shelly_state.channels[ch] = ch_status;
@@ -280,11 +279,10 @@ esp_err_t shelly_queue_switch(uint8_t channel, bool on)
         return ESP_ERR_INVALID_STATE;
     }
 
-    shelly_command_t cmd = {
-        .type = SHELLY_CMD_SET_SWITCH,
-        .channel = channel,
-        .on = on,
-    };
+    shelly_command_t cmd = {};
+    cmd.type = SHELLY_CMD_SET_SWITCH;
+    cmd.channel = channel;
+    cmd.on = on;
 
     if (xQueueSend(shelly_cmd_queue, &cmd, pdMS_TO_TICKS(100)) != pdTRUE) {
         ESP_LOGE(TAG, "Failed to queue Shelly command (queue full)");

@@ -6,6 +6,12 @@ static const char *TAG = "NTP_SYNC";
 static bool ntp_initialized = false;
 static bool time_synchronized = false;
 
+static void format_tz_string(int offset_hours, char *out, size_t out_size)
+{
+    // POSIX TZ sign is inverted: UTC-5 uses "UTC+5".
+    snprintf(out, out_size, "UTC%+d", -offset_hours);
+}
+
 esp_err_t ntp_sync_init(void)
 {
     ESP_LOGI(TAG, "Initializing NTP time synchronization...");
@@ -17,7 +23,7 @@ esp_err_t ntp_sync_init(void)
     
     // Set timezone
     char timezone_str[32];
-    snprintf(timezone_str, sizeof(timezone_str), "UTC%+d", g_config.timezone_offset_hours);
+    format_tz_string(g_config.timezone_offset_hours, timezone_str, sizeof(timezone_str));
     setenv("TZ", timezone_str, 1);
     tzset();
     
@@ -65,7 +71,7 @@ void ntp_sync_time(void)
     
     // Wait for time to be set
     time_t now = 0;
-    struct tm timeinfo = { 0 };
+    struct tm timeinfo = {};
     int retry = 0;
     const int retry_count = 10;
     
@@ -255,7 +261,7 @@ esp_err_t update_timezone(int offset_hours)
     
     // Update timezone
     char timezone_str[32];
-    snprintf(timezone_str, sizeof(timezone_str), "UTC%+d", offset_hours);
+    format_tz_string(offset_hours, timezone_str, sizeof(timezone_str));
     setenv("TZ", timezone_str, 1);
     tzset();
     
